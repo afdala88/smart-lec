@@ -1,0 +1,729 @@
+{% extends "base.html" %}
+{% block title %}Census {{ pest.name }}{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+  <a href="/"><i class="fa-solid fa-house"></i></a>
+  <i class="fa-solid fa-chevron-right"></i>
+  <a href="/{{ pest_key }}/">{{ pest.name }}</a>
+  <i class="fa-solid fa-chevron-right"></i>
+  <span>Census</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="--accent: {{ pest.color }};">
+  <div class="page-header-icon" style="background: linear-gradient(135deg, {{ pest.color }}, {{ pest.color }}99);">
+    <img src="/static/{{ pest.img }}" alt="{{ pest.name }}" class="pest-img">
+  </div>
+  <div>
+    <h1>Census {{ pest.name }}</h1>
+    <p class="page-subtitle">{{ t('census_subtitle') }}</p>
+  </div>
+</div>
+
+<section class="section">
+  <div class="census-layout">
+
+    <!-- Input Panel -->
+    <div class="census-panel">
+      <div class="panel-header">
+        <i class="fa-solid fa-folder-open"></i>
+        <h3>{{ t('input_data') }}</h3>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">
+          <i class="fa-solid fa-images"></i> {{ t('upload_label') }}
+        </label>
+        <input type="file" id="photo-folder-input" webkitdirectory directory multiple style="display:none;" />
+        <div class="folder-input-wrap">
+          <input type="text" id="photo-folder-summary" class="form-input" readonly
+                 placeholder="—" style="cursor:pointer;" />
+          <button type="button" class="btn-browse" id="btn-pick-photos" title="{{ t('upload_btn') }}">
+            <i class="fa-solid fa-folder-open"></i>
+          </button>
+        </div>
+        <div id="upload-progress" style="display:none; margin-top:6px;">
+          <div style="height:6px; background:var(--bg3); border-radius:3px; overflow:hidden;">
+            <div id="upload-progress-bar" style="height:100%; width:0; background:var(--green2, #3fb950); transition:width .2s;"></div>
+          </div>
+          <p class="form-hint" id="upload-progress-text" style="margin-top:4px;"></p>
+        </div>
+        <p class="form-hint">{{ t('upload_hint') }}</p>
+      </div>
+
+      {% if not cloud_mode %}
+      <div class="form-group">
+        <label class="form-label">
+          <i class="fa-solid fa-folder"></i> {{ t('local_path_label') }}
+        </label>
+        <div class="folder-input-wrap">
+          <input
+            type="text"
+            id="folder-path"
+            class="form-input"
+            placeholder="{{ t('folder_placeholder') }}"
+            autocomplete="off"
+          />
+          <button class="btn-browse" id="btn-browse" title="Browse folder">
+            <i class="fa-solid fa-folder-open"></i>
+          </button>
+        </div>
+        <p class="form-hint">{{ t('folder_hint') }}</p>
+      </div>
+      {% endif %}
+
+      <div class="form-group">
+        <label class="form-label">
+          <i class="fa-solid fa-calendar"></i> {{ t('census_period') }}
+        </label>
+        <div class="date-row">
+          <div class="date-field">
+            <label class="date-label">{{ t('date_from') }}</label>
+            <input type="date" id="date-from" class="form-input" />
+          </div>
+          <div class="date-field">
+            <label class="date-label">{{ t('date_to') }}</label>
+            <input type="date" id="date-to" class="form-input" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">
+          <i class="fa-solid fa-building"></i> {{ t('label_estate') }}
+        </label>
+        <select id="estate-name" class="form-input">
+          <option value="">— {{ t('estate_placeholder') }} —</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">
+          <i class="fa-solid fa-map-location-dot"></i> {{ t('label_divisi') }}
+        </label>
+        <input
+          type="text"
+          id="divisi-name"
+          class="form-input"
+          placeholder="{{ t('divisi_placeholder') }}"
+        />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">
+          <i class="fa-solid fa-border-all"></i> {{ t('block_division') }}
+        </label>
+        <select id="block-name" class="form-input" disabled>
+          <option value="">— {{ t('block_placeholder') }} —</option>
+        </select>
+        <input type="hidden" id="tahun-tanam" value="" />
+      </div>
+
+      {% block extra_form %}{% endblock %}
+
+      <!-- Ground Truth Upload -->
+      <div class="form-group" style="margin-top:0.5rem;">
+        <label class="form-label">
+          <i class="fa-solid fa-file-circle-check"></i> Ground Truth
+          <span style="font-weight:400; opacity:.7; font-size:.8em;">(opsional)</span>
+        </label>
+        <div class="gt-upload-wrap" id="gt-upload-wrap">
+          <input type="file" id="gt-file-input" accept=".xlsx,.xls" style="display:none;" />
+          <button type="button" class="btn-gt-upload" id="btn-gt-upload">
+            <i class="fa-solid fa-upload"></i> Upload Ground Truth
+          </button>
+          <span class="gt-filename" id="gt-filename" style="display:none;"></span>
+          <button type="button" class="btn-gt-clear" id="btn-gt-clear" style="display:none;" title="Hapus ground truth">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <p class="form-hint">File Excel dengan format sama seperti hasil sensus (kolom Baris-Pokok, F1-F3, D1-D3, Decision)</p>
+      </div>
+
+      <button class="btn-generate" id="btn-generate">
+        <span class="btn-generate-inner">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          {{ t('btn_generate') }}
+        </span>
+        <span class="btn-generate-loading" style="display:none;">
+          <i class="fa-solid fa-spinner fa-spin"></i>
+          {{ t('btn_processing') }}
+        </span>
+      </button>
+    </div>
+
+    <!-- Result Panel -->
+    <div class="result-panel" id="result-panel">
+      <div class="panel-header">
+        <i class="fa-solid fa-chart-bar"></i>
+        <h3>{{ t('census_results') }}</h3>
+      </div>
+
+      <!-- Empty state -->
+      <div class="result-empty" id="result-empty">
+        <div class="result-empty-icon">
+          <i class="fa-solid fa-chart-pie"></i>
+        </div>
+        <p>{{ t('no_data') }}</p>
+        <p class="result-empty-hint">{{ t('no_data_hint') | safe }}</p>
+      </div>
+
+      <!-- Processing state -->
+      <div class="result-empty" id="result-processing" style="display:none; flex-direction:column; gap:1rem;">
+        <div class="result-empty-icon" style="animation: spin 1.5s linear infinite;">
+          <i class="fa-solid fa-cog"></i>
+        </div>
+        <p style="font-weight:600;" id="processing-title">{{ t('processing') }}</p>
+        <p class="result-empty-hint" id="processing-status"></p>
+        <p class="result-empty-hint">{{ t('processing_hint') }}</p>
+        <p class="result-empty-hint">{{ t('queue_hint') }}</p>
+        <button class="btn-action btn-secondary" id="btn-stop" style="margin-top:0.5rem; max-width:160px;">
+          <i class="fa-solid fa-stop"></i> {{ t('btn_stop') }}
+        </button>
+      </div>
+
+      <!-- Result content -->
+      <div class="result-content" id="result-content" style="display:none;">
+        <div class="result-meta" id="result-meta"></div>
+        <div class="result-table-wrap" id="result-table-wrap"></div>
+        <div class="result-actions">
+          <button class="btn-action btn-excel" id="btn-download-excel">
+            <i class="fa-solid fa-file-excel"></i> {{ t('btn_download_excel') }}
+          </button>
+          <button class="btn-action btn-secondary" id="btn-reset">
+            <i class="fa-solid fa-rotate-left"></i> {{ t('btn_reset') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PEST_KEY = "{{ pest_key }}";
+let _lastColumns = [];
+let _lastRecords = [];
+let _currentJobId = null;
+let _pollInterval = null;
+let _estateData   = {};  // { estateName: [{blok, tahun_tanam}, ...] }
+let _gtColumns    = [];
+let _gtRecords    = [];
+
+// ── Auth-aware fetch (redirect to login on 401) ─────────────────────────────
+async function apiFetch(url, opts) {
+  const res = await fetch(url, opts);
+  if (res.status === 401) { window.location.href = '/login'; return null; }
+  return res;
+}
+
+// ── Load estates from API ──────────────────────────────────────────────────
+(async function loadEstates() {
+  try {
+    const res  = await apiFetch('/api/estates');
+    if (!res) return;
+    _estateData = await res.json();
+    const sel  = document.getElementById('estate-name');
+    Object.keys(_estateData).sort().forEach(name => {
+      const opt  = document.createElement('option');
+      opt.value  = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    console.warn('Failed to load estates', e);
+  }
+})();
+
+document.getElementById('estate-name').addEventListener('change', function () {
+  const blockSel   = document.getElementById('block-name');
+  const tahunInput = document.getElementById('tahun-tanam');
+  const blocks     = _estateData[this.value] || [];
+
+  // Reset block dropdown
+  blockSel.innerHTML = '<option value="">— Pilih Blok —</option>';
+  tahunInput.value   = '';
+
+  if (blocks.length === 0) {
+    blockSel.disabled = true;
+    return;
+  }
+
+  blocks.forEach(b => {
+    const opt = document.createElement('option');
+    opt.value       = b.blok;
+    opt.textContent = `${b.blok} (${b.tahun_tanam})`;
+    opt.dataset.tahunTanam = b.tahun_tanam;
+    blockSel.appendChild(opt);
+  });
+  blockSel.disabled = false;
+});
+
+document.getElementById('block-name').addEventListener('change', function () {
+  const selected = this.options[this.selectedIndex];
+  document.getElementById('tahun-tanam').value = selected.dataset.tahunTanam || '';
+});
+const LANG = {
+  toast_enter_folder:   {{ t('toast_enter_folder')  | tojson }},
+  toast_success:        {{ t('toast_success')        | tojson }},
+  toast_server_error:   {{ t('toast_server_error')   | tojson }},
+  toast_folder_error:   {{ t('toast_folder_error')   | tojson }},
+  toast_folder_missing: {{ t('toast_folder_missing') | tojson }},
+  col_row_tree:         {{ t('col_row_tree')         | tojson }},
+  result_rows:          {{ t('result_rows')          | tojson }},
+  label_folder:         {{ t('label_folder')         | tojson }},
+  label_status:         {{ t('label_status')         | tojson }},
+  status_success:       {{ t('status_success')       | tojson }},
+  processing:           {{ t('processing')           | tojson }},
+  processing_hint:      {{ t('processing_hint')      | tojson }},
+  toast_stopped:        {{ t('toast_stopped')        | tojson }},
+  label_duration:       {{ t('label_duration')       | tojson }},
+  upload_uploading:     {{ t('upload_uploading')     | tojson }},
+  upload_checking:      {{ t('upload_checking')      | tojson }},
+  upload_failed:        {{ t('upload_failed')        | tojson }},
+  toast_pick_folder:    {{ t('toast_pick_folder')    | tojson }},
+  queue_waiting:        {{ t('queue_waiting')        | tojson }},
+  queue_running:        {{ t('queue_running')        | tojson }},
+};
+const CLOUD_MODE = {{ 'true' if cloud_mode else 'false' }};
+
+function showState(state) {
+  document.getElementById('result-empty').style.display      = state === 'empty'      ? 'flex'  : 'none';
+  document.getElementById('result-content').style.display    = state === 'content'    ? 'block' : 'none';
+  document.getElementById('result-processing').style.display = state === 'processing' ? 'flex'  : 'none';
+}
+
+const DAMAGE_COLS = new Set(['D1', 'D2', 'D3']);
+
+function buildTable(columns, records) {
+  let html = '<div class="census-table-scroll"><table class="census-table"><thead><tr>';
+  columns.forEach(col => {
+    const cls = DAMAGE_COLS.has(col) ? ' class="th-damage"' : '';
+    html += `<th${cls}>${col === 'Baris-Pokok' ? LANG.col_row_tree : col}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+  records.forEach(row => {
+    html += '<tr>';
+    columns.forEach(col => {
+      if (DAMAGE_COLS.has(col)) {
+        const val = row[col] != null ? parseFloat(row[col]).toFixed(2) : '0.00';
+        html += `<td class="td-damage">${val}%</td>`;
+      } else {
+        html += `<td>${row[col] ?? ''}</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  html += `</tbody></table></div>`;
+  html += `<p class="result-empty-hint" style="margin-top:8px;">${records.length} ${LANG.result_rows}</p>`;
+  document.getElementById('result-table-wrap').innerHTML = html;
+}
+
+function setGenerateBtn(loading) {
+  const btn = document.getElementById('btn-generate');
+  btn.querySelector('.btn-generate-inner').style.display   = loading ? 'none' : 'flex';
+  btn.querySelector('.btn-generate-loading').style.display = loading ? 'flex' : 'none';
+  btn.disabled = loading;
+}
+
+function stopPolling() {
+  if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
+}
+
+function onResultReady(data, folder, startTime) {
+  stopPolling();
+  setGenerateBtn(false);
+  _currentJobId = null;
+
+  _lastColumns = data.columns;
+  _lastRecords = data.records;
+  buildTable(data.columns, data.records);
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  document.getElementById('result-meta').innerHTML =
+    `<div class="result-summary">
+      <div class="result-summary-item">
+        <span class="result-label">${LANG.label_folder}</span>
+        <span class="result-value result-path">${folder}</span>
+      </div>
+      <div class="result-summary-item">
+        <span class="result-label">${LANG.label_duration}</span>
+        <span class="result-value">${elapsed}s</span>
+      </div>
+      <div class="result-summary-item">
+        <span class="result-label">${LANG.label_status}</span>
+        <span class="result-value result-status">${LANG.status_success}</span>
+      </div>
+    </div>`;
+
+  showState('content');
+  showToast(LANG.toast_success, 'success');
+}
+
+// ── Photo folder upload (resumable: one PUT per file, skip files already on the server) ──
+const UPLOAD_CONCURRENCY = 4;
+const UPLOAD_RETRIES     = 5;
+const PHOTO_EXT          = /\.(jpe?g|png|tiff?)$/i;
+let _photoFiles   = [];      // File objects picked with webkitdirectory
+let _uploadAbort  = false;
+const _localPathEl = () => document.getElementById('folder-path');   // absent in CLOUD_MODE
+
+function _fmtBytes(n) {
+  return n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : (n / 1e6).toFixed(0) + ' MB';
+}
+
+function _photoFolderName() {
+  return _photoFiles.length ? _photoFiles[0].webkitRelativePath.split('/')[0] : '';
+}
+
+function _uploadKey() {
+  const total = _photoFiles.reduce((a, f) => a + f.size, 0);
+  return `census_upload:${_photoFolderName()}:${_photoFiles.length}:${total}`;
+}
+
+function _setUploadProgress(done, total, bytesDone, bytesTotal, label) {
+  document.getElementById('upload-progress').style.display = 'block';
+  const pct = bytesTotal ? Math.round(bytesDone / bytesTotal * 100) : 0;
+  document.getElementById('upload-progress-bar').style.width = pct + '%';
+  document.getElementById('upload-progress-text').textContent =
+    `${label || LANG.upload_uploading}: ${done}/${total} (${_fmtBytes(bytesDone)} / ${_fmtBytes(bytesTotal)}, ${pct}%)`;
+}
+
+document.getElementById('btn-pick-photos').addEventListener('click', () =>
+  document.getElementById('photo-folder-input').click());
+document.getElementById('photo-folder-summary').addEventListener('click', () =>
+  document.getElementById('photo-folder-input').click());
+
+document.getElementById('photo-folder-input').addEventListener('change', function () {
+  _photoFiles = [...this.files].filter(f => PHOTO_EXT.test(f.name));
+  const total = _photoFiles.reduce((a, f) => a + f.size, 0);
+  document.getElementById('photo-folder-summary').value = _photoFiles.length
+    ? `${_photoFolderName()} — ${_photoFiles.length} foto, ${_fmtBytes(total)}` : '';
+  document.getElementById('upload-progress').style.display = 'none';
+  if (_photoFiles.length && _localPathEl()) _localPathEl().value = '';
+});
+
+async function _putWithRetry(uploadId, file) {
+  const path = encodeURIComponent(file.webkitRelativePath);
+  for (let attempt = 0; attempt <= UPLOAD_RETRIES; attempt++) {
+    if (_uploadAbort) throw new Error('aborted');
+    try {
+      const res = await fetch(`/${PEST_KEY}/upload/${uploadId}/file?path=${path}`, { method: 'PUT', body: file });
+      if (res.status === 401) { window.location.href = '/login'; throw new Error('unauthorized'); }
+      if (res.ok) return;
+      if (res.status >= 400 && res.status < 500) {        // bad file: not worth retrying
+        const d = await res.json().catch(() => ({}));
+        throw Object.assign(new Error(d.error || res.statusText), { fatal: true });
+      }
+    } catch (e) {
+      if (e.fatal || e.message === 'aborted' || e.message === 'unauthorized') throw e;
+    }
+    await new Promise(r => setTimeout(r, Math.min(30000, 1000 * 2 ** attempt)));   // backoff
+  }
+  throw new Error(`gagal upload ${file.webkitRelativePath}`);
+}
+
+async function uploadPhotoFolder() {
+  _uploadAbort = false;
+  const key = _uploadKey();
+  let uploadId = null;
+  try { uploadId = localStorage.getItem(key); } catch (_) {}
+
+  // Resume: ask the server which files it already has
+  let existing = {};
+  if (uploadId) {
+    const st = await apiFetch(`/${PEST_KEY}/upload/${uploadId}/status`);
+    if (st && st.ok) existing = (await st.json()).files || {};
+    else uploadId = null;
+  }
+  if (!uploadId) {
+    const r = await apiFetch(`/${PEST_KEY}/upload/start`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: _photoFolderName() }),
+    });
+    if (!r || !r.ok) throw new Error('upload/start');
+    uploadId = (await r.json()).upload_id;
+    try { localStorage.setItem(key, uploadId); } catch (_) {}
+  }
+
+  const total      = _photoFiles.length;
+  const bytesTotal = _photoFiles.reduce((a, f) => a + f.size, 0);
+  const todo       = _photoFiles.filter(f => existing[f.webkitRelativePath] !== f.size);
+  let done      = total - todo.length;
+  let bytesDone = _photoFiles.filter(f => existing[f.webkitRelativePath] === f.size)
+                             .reduce((a, f) => a + f.size, 0);
+  _setUploadProgress(done, total, bytesDone, bytesTotal);
+
+  let next = 0;
+  async function worker() {
+    while (next < todo.length) {
+      const f = todo[next++];
+      await _putWithRetry(uploadId, f);
+      done++; bytesDone += f.size;
+      _setUploadProgress(done, total, bytesDone, bytesTotal);
+    }
+  }
+  await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, worker));
+
+  _setUploadProgress(done, total, bytesDone, bytesTotal, LANG.upload_checking);
+  const fin = await apiFetch(`/${PEST_KEY}/upload/${uploadId}/finish`, { method: 'POST' });
+  if (!fin) throw new Error('unauthorized');
+  const fd = await fin.json();
+  if (!fin.ok) throw Object.assign(new Error(fd.error || 'finish'), { fatal: true });
+  return { uploadId, key, folder: fd.folder };
+}
+
+// ── Job polling (queued -> running -> done | error | cancelled) ───────────────
+const ACTIVE_JOB_KEY = 'census_active_job';
+
+function _rememberJob(jobId, name) {
+  try { localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify({ jobId, name, t: Date.now() })); } catch (_) {}
+}
+function _forgetJob() { try { localStorage.removeItem(ACTIVE_JOB_KEY); } catch (_) {} }
+
+function _setProcessingStatus(text) {
+  document.getElementById('processing-status').textContent = text || '';
+}
+
+function pollJob(jobId, name, startTime) {
+  _currentJobId = jobId;
+  stopPolling();
+  _pollInterval = setInterval(async () => {
+    try {
+      const pr = await apiFetch(`/api/job/${jobId}`);
+      if (!pr) { stopPolling(); return; }
+      const pd = await pr.json();
+      if (pd.status === 'queued') {
+        _setProcessingStatus(LANG.queue_waiting.replace('{n}', pd.position || 1));
+      } else if (pd.status === 'running') {
+        _setProcessingStatus(LANG.queue_running);
+      } else if (pd.status === 'done') {
+        _forgetJob();
+        onResultReady(pd, pd.name || name, startTime);
+      } else {
+        // error | cancelled | not_found
+        _forgetJob();
+        stopPolling();
+        setGenerateBtn(false);
+        showState('empty');
+        if (pd.status === 'cancelled') showToast(LANG.toast_stopped, 'info');
+        else showToast(LANG.toast_server_error + (pd.error || pd.status), 'error');
+      }
+    } catch (err) {
+      // transient network error on a remote connection: keep polling
+      console.warn('poll failed', err);
+    }
+  }, 3000);
+}
+
+// Resume an unfinished job after reload / reopening the page
+(function resumeActiveJob() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(ACTIVE_JOB_KEY) || 'null'); } catch (_) {}
+  if (!saved || !saved.jobId) return;
+  setGenerateBtn(true);
+  showState('processing');
+  pollJob(saved.jobId, saved.name, saved.t || Date.now());
+})();
+
+// ── Generate ───────────────────────────────────────────────────────────────
+document.getElementById('btn-generate').addEventListener('click', async () => {
+  const localFolder = _localPathEl() ? _localPathEl().value.trim() : '';
+  if (!_photoFiles.length && !localFolder) {
+    showToast(CLOUD_MODE ? LANG.toast_pick_folder : LANG.toast_enter_folder, 'error');
+    return;
+  }
+
+  setGenerateBtn(true);
+  const startTime = Date.now();
+  let source = { folder_path: localFolder };
+  let folder = localFolder;
+  let uploadKey = null;
+
+  showState('processing');
+  _setProcessingStatus('');
+
+  if (_photoFiles.length) {
+    _setProcessingStatus(LANG.upload_uploading + '...');
+    try {
+      const up = await uploadPhotoFolder();
+      source = { upload_id: up.uploadId };
+      folder = up.folder;
+      uploadKey = up.key;
+    } catch (err) {
+      setGenerateBtn(false);
+      showState('empty');
+      if (err.message !== 'aborted') showToast(LANG.upload_failed + err.message, 'error');
+      return;
+    }
+  }
+
+  try {
+    const res  = await apiFetch(`/${PEST_KEY}/census/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...source,
+        date_from:    document.getElementById('date-from').value,
+        date_to:      document.getElementById('date-to').value,
+        estate:       document.getElementById('estate-name').value,
+        divisi:       document.getElementById('divisi-name').value,
+        block:        document.getElementById('block-name').value,
+        tahun_tanam:  document.getElementById('tahun-tanam').value,
+        gt_columns:   _gtColumns,
+        gt_records:   _gtRecords,
+        ...(window._censusExtraData ? window._censusExtraData() : {}),
+      })
+    });
+    if (!res) return;
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(LANG.toast_server_error + (data.error || ''), 'error');
+      showState('empty');
+      setGenerateBtn(false);
+      return;
+    }
+
+    // The upload is now attached to a job; a later pick of the same folder starts fresh
+    if (uploadKey) { try { localStorage.removeItem(uploadKey); } catch (_) {} }
+
+    _rememberJob(data.job_id, folder);
+    _setProcessingStatus(LANG.queue_waiting.replace('{n}', data.position || 1));
+    pollJob(data.job_id, folder, startTime);
+
+  } catch (err) {
+    showToast(LANG.toast_server_error + err.message, 'error');
+    showState('empty');
+    setGenerateBtn(false);
+  }
+});
+
+// ── Export Excel ───────────────────────────────────────────────────────────
+document.getElementById('btn-download-excel').addEventListener('click', async () => {
+  if (!_lastColumns.length) return;
+  const res = await apiFetch(`/${PEST_KEY}/census/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ columns: _lastColumns, records: _lastRecords }),
+  });
+  if (!res) return;
+  if (!res.ok) { showToast(LANG.toast_server_error, 'error'); return; }
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'census_result.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ── Reset ──────────────────────────────────────────────────────────────────
+document.getElementById('btn-reset').addEventListener('click', () => {
+  showState('empty');
+  if (_localPathEl()) _localPathEl().value = '';
+  _photoFiles = [];
+  document.getElementById('photo-folder-input').value   = '';
+  document.getElementById('photo-folder-summary').value = '';
+  document.getElementById('upload-progress').style.display = 'none';
+  document.getElementById('date-from').value    = '';
+  document.getElementById('date-to').value      = '';
+  document.getElementById('estate-name').value  = '';
+  document.getElementById('divisi-name').value  = '';
+  const blockSel = document.getElementById('block-name');
+  blockSel.innerHTML = '<option value="">— Pilih Blok —</option>';
+  blockSel.disabled  = true;
+  document.getElementById('tahun-tanam').value  = '';
+  document.getElementById('result-table-wrap').innerHTML = '';
+  document.getElementById('result-meta').innerHTML       = '';
+  // reset ground truth
+  _gtColumns = []; _gtRecords = [];
+  if (window._censusExtraReset) window._censusExtraReset();
+  document.getElementById('gt-filename').style.display  = 'none';
+  document.getElementById('btn-gt-clear').style.display = 'none';
+  document.getElementById('gt-filename').textContent    = '';
+});
+
+// ── Stop ──────────────────────────────────────────────────────────────────
+document.getElementById('btn-stop').addEventListener('click', async () => {
+  _uploadAbort = true;
+  if (_currentJobId) {
+    // queued jobs are dropped at once; a running job stops at its next stage
+    await fetch(`/api/job/${_currentJobId}/cancel`, { method: 'POST' }).catch(() => {});
+    _currentJobId = null;
+  }
+  _forgetJob();
+  stopPolling();
+  setGenerateBtn(false);
+  showState('empty');
+  showToast(LANG.toast_stopped, 'info');
+});
+
+// ── Ground Truth Upload ────────────────────────────────────────────────────
+document.getElementById('btn-gt-upload').addEventListener('click', () => {
+  document.getElementById('gt-file-input').click();
+});
+
+document.getElementById('gt-file-input').addEventListener('change', async function () {
+  const file = this.files[0];
+  if (!file) return;
+
+  const btn = document.getElementById('btn-gt-upload');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memuat...';
+
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res  = await apiFetch('/api/ground-truth/parse', { method: 'POST', body: fd });
+    if (!res) return;
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal parse file');
+
+    _gtColumns = data.columns;
+    _gtRecords = data.records;
+
+    document.getElementById('gt-filename').textContent = file.name + ` (${data.records.length} baris)`;
+    document.getElementById('gt-filename').style.display = 'inline';
+    document.getElementById('btn-gt-clear').style.display = 'inline-flex';
+    showToast(`Ground Truth dimuat: ${data.records.length} baris`, 'success');
+  } catch (err) {
+    showToast('Gagal upload Ground Truth: ' + err.message, 'error');
+    _gtColumns = []; _gtRecords = [];
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-upload"></i> Upload Ground Truth';
+    this.value = '';
+  }
+});
+
+document.getElementById('btn-gt-clear').addEventListener('click', () => {
+  _gtColumns = []; _gtRecords = [];
+  document.getElementById('gt-filename').style.display  = 'none';
+  document.getElementById('btn-gt-clear').style.display = 'none';
+  document.getElementById('gt-filename').textContent    = '';
+});
+
+{% block extra_scripts %}{% endblock %}
+
+// ── Browse (lab PC only: dialog opens on the server's desktop) ────────────────
+if (document.getElementById('btn-browse')) document.getElementById('btn-browse').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-browse');
+  btn.disabled = true;
+  try {
+    const res  = await apiFetch('/browse-folder');
+    if (!res) return;
+    const data = await res.json();
+    if (data.path) document.getElementById('folder-path').value = data.path;
+  } catch (err) {
+    showToast(LANG.toast_folder_error + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+{% endblock %}

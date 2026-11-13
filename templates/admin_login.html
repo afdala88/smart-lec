@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Login | SMARTRI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <style>
+    .auth-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      background: var(--bg);
+    }
+    .auth-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 360px;
+      box-shadow: var(--shadow);
+    }
+    .auth-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text2);
+      margin-bottom: 1.5rem;
+    }
+    .auth-logo i { font-size: 1.2rem; }
+    .auth-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.3rem;
+    }
+    .auth-sub {
+      font-size: 0.875rem;
+      color: var(--text2);
+      margin-bottom: 1.8rem;
+    }
+    .form-group { margin-bottom: 1.1rem; }
+    .form-group label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text2);
+      margin-bottom: 0.4rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .form-group input {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.9rem;
+      font-size: 0.95rem;
+      color: var(--text);
+      font-family: var(--font);
+      transition: border-color var(--transition);
+    }
+    .form-group input:focus { outline: none; border-color: var(--blue); }
+    .btn-primary {
+      width: 100%;
+      background: #1f6feb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 0.5rem;
+      transition: background var(--transition);
+      font-family: var(--font);
+    }
+    .btn-primary:hover { background: var(--blue); }
+    .alert {
+      padding: 0.7rem 0.9rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+    .alert-error { background: rgba(248,81,73,0.12); border: 1px solid rgba(248,81,73,0.3); color: #f85149; }
+  </style>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo"><i class="fa-solid fa-shield-halved"></i> Admin Panel</div>
+    <div class="auth-title">Login Admin</div>
+    <div class="auth-sub">Akses khusus administrator</div>
+
+    {% if error %}
+    <div class="alert alert-error"><i class="fa-solid fa-circle-exclamation"></i> {{ error }}</div>
+    {% endif %}
+
+    <form method="POST">
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" name="password" placeholder="Password admin" required autofocus />
+      </div>
+      <button type="submit" class="btn-primary">
+        <i class="fa-solid fa-right-to-bracket"></i> Masuk
+      </button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

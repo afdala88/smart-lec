@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav_home') }}{% endblock %}
+
+{% block content %}
+<div class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <i class="fa-solid fa-seedling"></i> {{ t('hero_badge') }}
+    </div>
+    <h1 class="hero-title">{{ t('hero_title_1') }}<br><span class="gradient-text">{{ t('hero_title_2') }}</span></h1>
+    <p class="hero-ai-label"><i class="fa-solid fa-microchip"></i> AI-Powered</p>
+    <p class="hero-subtitle">{{ t('hero_subtitle') }}</p>
+  </div>
+</div>
+
+<section class="section" style="padding-top: 0.5rem;">
+  <div class="section-header">
+    <h2>Leaf-Eating Caterpillar (LEC)</h2>
+    <p>{{ t('section_select_pest_sub') }}</p>
+  </div>
+
+  <div class="module-grid">
+    <!-- Census -->
+    <a href="/bagworm/census" class="module-card module-census">
+      <div class="module-card-inner">
+        <div class="module-icon">
+          <i class="fa-solid fa-clipboard-list"></i>
+        </div>
+        <div class="module-body">
+          <h3>Start Census</h3>
+          <p>{{ t('census_module_desc').replace('{name}', 'Bagworm') }}</p>
+        </div>
+        <ul class="module-features">
+          <li><i class="fa-solid fa-check"></i> {{ t('census_feat_1') }}</li>
+          <li><i class="fa-solid fa-check"></i> {{ t('census_feat_2') }}</li>
+          <li><i class="fa-solid fa-check"></i> {{ t('census_feat_3') }}</li>
+        </ul>
+        <div class="module-cta">
+          {{ t('census_cta') }} <i class="fa-solid fa-arrow-right"></i>
+        </div>
+      </div>
+    </a>
+
+    <!-- Monitoring -->
+    <a href="/bagworm/monitoring" class="module-card module-monitoring">
+      <div class="module-card-inner">
+        <div class="module-icon">
+          <i class="fa-solid fa-chart-line"></i>
+        </div>
+        <div class="module-body">
+          <h3>Dashboard Monitoring</h3>
+          <p>{{ t('monitoring_module_desc').replace('{name}', 'Bagworm') }}</p>
+        </div>
+        <ul class="module-features">
+          <li><i class="fa-solid fa-check"></i> {{ t('monitoring_feat_1') }}</li>
+          <li><i class="fa-solid fa-check"></i> {{ t('monitoring_feat_2') }}</li>
+          <li><i class="fa-solid fa-check"></i> {{ t('monitoring_feat_3') }}</li>
+        </ul>
+        <div class="module-cta">
+          {{ t('monitoring_cta') }} <i class="fa-solid fa-arrow-right"></i>
+        </div>
+      </div>
+    </a>
+  </div>
+</section>
+{% endblock %}

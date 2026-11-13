@@ -1,0 +1,36 @@
+# --- Data that lives on the server (never overwrite it with git pull) ---
+census.db
+census.db-journal
+census.db-wal
+census.db-shm
+census.db.bak_*
+*.db.bak*
+
+# --- Secrets (copy to the VM once with scp, chmod 600) ---
+gcal_credentials.json
+gcal_token.json
+.env
+*.env
+
+# --- Runtime output / scratch ---
+uploads/
+temp_suport/
+yolov5_inf/_job_*/
+*.log
+
+# --- Training leftovers (only best.pt of the models in use is shipped) ---
+**/weights/last.pt
+yolov5_inf/model_fix/det_yv5/v1/
+events.out.tfevents.*
+
+# --- Separate WhatsApp agent project ---
+agent/
+
+# --- Python / editor caches ---
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

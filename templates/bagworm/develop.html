@@ -1,0 +1,666 @@
+{% extends "base.html" %}
+{% block title %}Develop — Bagworm{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+  <a href="/"><i class="fa-solid fa-house"></i></a>
+  <i class="fa-solid fa-chevron-right"></i>
+  <a href="/bagworm/">Bagworm</a>
+  <i class="fa-solid fa-chevron-right"></i>
+  <span>Develop</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="--accent: {{ pest.color }};">
+  <div class="page-header-icon" style="background: linear-gradient(135deg, {{ pest.color }}, {{ pest.color }}99);">
+    <i class="fa-solid fa-flask" style="font-size:1.6rem; color:#fff;"></i>
+  </div>
+  <div>
+    <h1>Develop — {{ pest.name }}</h1>
+    <p class="page-subtitle">Model information, segmentation &amp; classification pipeline.</p>
+  </div>
+</div>
+
+<section class="section">
+
+  {# ── Model Information (full-width, horizontal) ──────────────────────────── #}
+  <div class="dev-card">
+    <div class="dev-card-header">
+      <div class="dev-card-title">
+        <i class="fa-solid fa-microchip"></i>
+        <h3>Model Information</h3>
+      </div>
+      <select class="dev-model-select" id="dev-model-select">
+        <option value="detection">Detection — YOLOv5 (det_yv5 v2)</option>
+        <option value="classifier">Classifier — {{ models.classifier.arch }} (bag-dam)</option>
+      </select>
+    </div>
+
+    {# ── Detection panel ────────────────────────────────── #}
+    <div class="dev-model-panel" id="panel-detection">
+      {% set dm = models.detection %}
+      {% set mt = dm.train_meta %}
+      {% if mt %}
+      <div class="dev-trained-badge">
+        <i class="fa-solid fa-circle-check"></i>
+        Last trained: <strong>{{ mt.trained_at }}</strong>
+        &nbsp;·&nbsp; {{ mt.epochs }} epochs
+        &nbsp;·&nbsp; dataset: <span class="dev-path" title="{{ mt.dataset_path }}">{{ mt.dataset_path }}</span>
+      </div>
+      {% endif %}
+      <div class="dev-hrow">
+        <div class="dev-hcol">
+          <div class="dev-section-title">Dataset</div>
+          <div class="dev-info-row"><span class="dev-info-label">Gambar segmentasi</span><span class="dev-info-value" id="mi-seg-count">{{ dataset.seg_count }}</span></div>
+          <div class="dev-info-row"><span class="dev-info-label">Anotasi JSON</span><span class="dev-info-value" id="mi-seg-json">{{ dataset.seg_json_count }}</span></div>
+          <div class="dev-info-row"><span class="dev-info-label">Path</span><span class="dev-info-value dev-path" title="{{ dataset.seg_path }}">{{ dataset.seg_path }}</span></div>
+        </div>
+        <div class="dev-hcol">
+          <div class="dev-section-title">Model Config</div>
+          <div class="dev-info-row"><span class="dev-info-label">Arsitektur</span><span class="dev-info-value">{{ dm.arch }}</span></div>
+          <div class="dev-info-row"><span class="dev-info-label">File</span><span class="dev-info-value dev-path" title="{{ dm.path }}">{{ dm.path | basename }}</span></div>
+          <div class="dev-info-row"><span class="dev-info-label">Img size</span><span class="dev-info-value">{{ dm.img_size }} px</span></div>
+          <div class="dev-info-row"><span class="dev-info-label">Optimizer</span><span class="dev-info-value">{{ dm.optimizer }}</span></div>
+        </div>
+        {% if dm.metrics %}{% set m = dm.metrics %}
+        <div class="dev-hcol dev-hcol--perf">
+          <div class="dev-section-title">Performance <span style="font-weight:400;color:var(--text3);">(best epoch {{ m.best_epoch }}/{{ m.epochs }})</span></div>
+          <div class="dev-perf-grid dev-perf-grid--h" id="mi-det-perf">
+            <div class="dev-perf-card"><span class="dev-perf-val">{{ (m.precision|float*100)|round(1) }}%</span><span class="dev-perf-lbl">Precision</span></div>
+            <div class="dev-perf-card"><span class="dev-perf-val">{{ (m.recall|float*100)|round(1) }}%</span><span class="dev-perf-lbl">Recall</span></div>
+            <div class="dev-perf-card dev-perf-card--accent"><span class="dev-perf-val">{{ (m.mAP50|float*100)|round(1) }}%</span><span class="dev-perf-lbl">mAP@0.5</span></div>
+            <div class="dev-perf-card"><span class="dev-perf-val">{{ (m.mAP50_95|float*100)|round(1) }}%</span><span class="dev-perf-lbl">mAP@.5:.95</span></div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Classifier panel ───────────────────────────────── #}
+    <div class="dev-model-panel" id="panel-classifier" style="display:none;">
+      {% set cm = models.classifier %}
+      {% set mt = cm.train_meta %}
+      {% if mt %}
+      <div class="dev-trained-badge">
+        <i class="fa-solid fa-circle-check"></i>
+        Last trained: <strong>{{ mt.trained_at }}</strong>
+        &nbsp;·&nbsp; {{ mt.epochs }} epochs
+        {% if mt.split %}
+        &nbsp;·&nbsp; split {{ mt.split.train }}/{{ mt.split.val }}/{{ mt.split.test }}%
+        {% endif %}
+        &nbsp;·&nbsp; dataset: <span class="dev-path" title="{{ mt.dataset_path }}">{{ mt.dataset_path }}</span>
+      </div>
+      {% endif %}
+      <div class="dev-hrow">
+        <div class="dev-hcol">
+          <div class="dev-section-title">Dataset Training</div>
+          {% if models.classifier.class_counts %}
+            {% set total = models.classifier.class_counts.values() | sum %}
+            <div class="dev-info-row">
+              <span class="dev-info-label">Total gambar</span>
+              <span class="dev-info-value" id="mi-cls-total">{{ total }}</span>
+            </div>
+            <div id="mi-cls-class-counts">
+            {% for cls, cnt in models.classifier.class_counts.items() %}
+            <div class="dev-info-row">
+              <span class="dev-info-label">— {{ cls }}</span>
+              <span class="dev-info-value">{{ cnt }}</span>
+            </div>
+            {% endfor %}
+            </div>
+            <div class="dev-info-row">
+              <span class="dev-info-label">Path</span>
+              <span class="dev-info-value dev-path" title="{{ cm.train_meta.dataset_path }}">{{ cm.train_meta.dataset_path }}</span>
+            </div>
+          {% else %}
+            <div class="dev-info-row" id="mi-cls-no-data">
+              <span class="dev-info-label" style="color:var(--text3); font-style:italic;">Belum ada data training</span>
+            </div>
+          {% endif %}
+        </div>
+        <div class="dev-hcol">
+          <div class="dev-section-title">Model Config</div>
+          <div class="dev-info-row"><span class="dev-info-label">Arsitektur</span><span class="dev-info-value">{{ cm.arch }}</span></div>
+          <div class="dev-info-row"><span class="dev-info-label">File</span><span class="dev-info-value dev-path" title="{{ cm.path }}">{{ cm.path | basename }}</span></div>
+          <div class="dev-info-row"><span class="dev-info-label">Img size</span><span class="dev-info-value">{{ cm.img_size }} × {{ cm.img_size }} px</span></div>
+          <div class="dev-info-row"><span class="dev-info-label">Optimizer</span><span class="dev-info-value">{{ cm.optimizer }}</span></div>
+          <div class="dev-info-row"><span class="dev-info-label">Classes</span><span class="dev-info-value">Bagworm / Background</span></div>
+        </div>
+        {% if cm.metrics %}{% set m = cm.metrics %}
+        <div class="dev-hcol dev-hcol--perf">
+          <div class="dev-section-title">Performance <span style="font-weight:400;color:var(--text3);">(best epoch {{ m.best_epoch }}/{{ m.epochs }})</span></div>
+          <div class="dev-perf-grid dev-perf-grid--h" id="mi-cls-perf">
+            <div class="dev-perf-card dev-perf-card--accent"><span class="dev-perf-val">{{ (m.acc_top1|float*100)|round(1) }}%</span><span class="dev-perf-lbl">Top-1 Acc</span></div>
+            <div class="dev-perf-card"><span class="dev-perf-val">{{ (m.acc_top5|float*100)|round(1) }}%</span><span class="dev-perf-lbl">Top-5 Acc</span></div>
+            <div class="dev-perf-card"><span class="dev-perf-val">{{ m.val_loss }}</span><span class="dev-perf-lbl">Loss</span></div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>{# /dev-card #}
+
+  {# ── Segmentasi & Klasifikasi ────────────────────────────────────────────── #}
+  <div class="dev-columns">
+
+    {# ── Segmentasi ────────── #}
+    <div class="dev-col">
+      <div class="dev-col-header dev-col-header--seg">
+        <i class="fa-solid fa-object-group"></i>
+        <h3>Segmentasi</h3>
+      </div>
+      <div class="dev-col-body">
+
+        {# Training form #}
+        <div class="dev-section">
+          <div class="dev-section-title">Training</div>
+          <div class="dev-train-form" id="form-detection">
+            <div class="dev-field">
+              <label class="dev-field-label">Dataset folder <span style="color:var(--text3);">(.jpg + .json LabelMe) atau .yaml</span></label>
+              <div class="dev-field-row">
+                <input type="text" class="dev-input" id="det-dataset" placeholder="Folder berisi gambar.jpg + anotasi.json">
+                <button type="button" class="btn-dev-browse" id="det-browse-folder" title="Browse folder">
+                  <i class="fa-solid fa-folder-open"></i>
+                </button>
+                <button type="button" class="btn-dev-browse" id="det-browse-yaml" title="Browse .yaml">
+                  <i class="fa-solid fa-file-code"></i>
+                </button>
+              </div>
+            </div>
+            <div class="dev-field">
+              <label class="dev-field-label">Pretrained model (.pt) <span style="color:var(--text3);">— kosongkan untuk pakai model saat ini</span></label>
+              <div class="dev-field-row">
+                <input type="text" class="dev-input" id="det-pretrained" placeholder="{{ models.detection.path | basename }} (default)">
+                <button type="button" class="btn-dev-browse" id="det-pt-browse" title="Browse file .pt">
+                  <i class="fa-solid fa-folder-open"></i>
+                </button>
+              </div>
+            </div>
+            <div class="dev-split-row dev-split-row--wrap" id="det-split-row">
+              <div class="dev-split-item">
+                <span class="dev-split-label">Train %</span>
+                <input type="number" class="dev-input dev-input--sm" id="det-split-train" value="70" min="10" max="90">
+              </div>
+              <div class="dev-split-item">
+                <span class="dev-split-label">Val %</span>
+                <input type="number" class="dev-input dev-input--sm" id="det-split-val" value="20" min="5" max="50">
+              </div>
+              <div class="dev-split-item">
+                <span class="dev-split-label">Test %</span>
+                <input type="number" class="dev-input dev-input--sm dev-input--readonly" id="det-split-test" value="10" readonly>
+              </div>
+              <div class="dev-split-divider"></div>
+              <div class="dev-split-item">
+                <span class="dev-split-label">Epochs</span>
+                <input type="number" class="dev-input dev-input--sm" id="det-epochs" value="{{ models.detection.metrics.epochs or 100 }}" min="1" max="1000">
+              </div>
+              <div class="dev-split-item">
+                <span class="dev-split-label">Batch</span>
+                <input type="number" class="dev-input dev-input--sm" id="det-batch" value="{{ models.detection.batch }}" min="1">
+              </div>
+              <div class="dev-split-item">
+                <span class="dev-split-label">Img size</span>
+                <input type="number" class="dev-input dev-input--sm" id="det-imgsz" value="{{ models.detection.img_size }}" min="32" step="32">
+              </div>
+            </div>
+            <button type="button" class="btn-dev btn-dev--train" id="btn-det-train">
+              <i class="fa-solid fa-play"></i> Mulai Training
+            </button>
+            <div class="dev-train-progress" id="det-progress" style="display:none;">
+              <div class="dev-progress-bar"><div class="dev-progress-fill" id="det-progress-fill"></div></div>
+              <div class="dev-log-box" id="det-log"></div>
+              <button type="button" class="btn-dev btn-dev--secondary btn-dev--sm" id="btn-det-stop">
+                <i class="fa-solid fa-stop"></i> Stop
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    {# ── Klasifikasi ───────── #}
+    <div class="dev-col">
+      <div class="dev-col-header dev-col-header--cls">
+        <i class="fa-solid fa-tags"></i>
+        <h3>Klasifikasi</h3>
+      </div>
+      <div class="dev-col-body">
+
+        {# Training form #}
+        <div class="dev-section">
+          <div class="dev-section-title">Training</div>
+          <div class="dev-train-form" id="form-classifier">
+            <div class="dev-field">
+              <label class="dev-field-label">Dataset folder <span style="color:var(--text3);">(subfolder = nama class)</span></label>
+              <div class="dev-field-row">
+                <input type="text" class="dev-input" id="cls-dataset" placeholder="bagworm/ &amp; background/ di dalam folder ini">
+                <button type="button" class="btn-dev-browse" id="cls-browse" title="Browse folder">
+                  <i class="fa-solid fa-folder-open"></i>
+                </button>
+              </div>
+            </div>
+            <div class="dev-field">
+              <label class="dev-field-label">Pretrained model (.pt) <span style="color:var(--text3);">— kosongkan untuk pakai model saat ini</span></label>
+              <div class="dev-field-row">
+                <input type="text" class="dev-input" id="cls-pretrained" placeholder="{{ models.classifier.path | basename }} (default)">
+                <button type="button" class="btn-dev-browse" id="cls-pt-browse" title="Browse file .pt">
+                  <i class="fa-solid fa-folder-open"></i>
+                </button>
+              </div>
+            </div>
+            <div class="dev-split-row dev-split-row--wrap">
+              <div class="dev-split-item">
+                <span class="dev-split-label">Train %</span>
+                <input type="number" class="dev-input dev-input--sm" id="cls-split-train" value="70" min="10" max="90">
+              </div>
+              <div class="dev-split-item">
+                <span class="dev-split-label">Val %</span>
+                <input type="number" class="dev-input dev-input--sm" id="cls-split-val" value="20" min="5" max="50">
+              </div>
+              <div class="dev-split-item">
+                <span class="dev-split-label">Test %</span>
+                <input type="number" class="dev-input dev-input--sm dev-input--readonly" id="cls-split-test" value="10" readonly>
+              </div>
+              <div class="dev-split-divider"></div>
+              <div class="dev-split-item">
+                <span class="dev-split-label">Epochs</span>
+                <input type="number" class="dev-input dev-input--sm" id="cls-epochs" value="{{ models.classifier.metrics.epochs or 300 }}" min="1" max="1000">
+              </div>
+              <div class="dev-split-item">
+                <span class="dev-split-label">Batch</span>
+                <input type="number" class="dev-input dev-input--sm" id="cls-batch" value="{{ models.classifier.batch }}" min="1">
+              </div>
+              <div class="dev-split-item">
+                <span class="dev-split-label">Img size</span>
+                <input type="number" class="dev-input dev-input--sm" id="cls-imgsz" value="{{ models.classifier.img_size }}" min="32" step="32">
+              </div>
+            </div>
+            <button type="button" class="btn-dev btn-dev--train" id="btn-cls-train">
+              <i class="fa-solid fa-play"></i> Mulai Training
+            </button>
+            <div class="dev-train-progress" id="cls-progress" style="display:none;">
+              <div class="dev-progress-bar"><div class="dev-progress-fill" id="cls-progress-fill"></div></div>
+              <div class="dev-log-box" id="cls-log"></div>
+              <button type="button" class="btn-dev btn-dev--secondary btn-dev--sm" id="btn-cls-stop">
+                <i class="fa-solid fa-stop"></i> Stop
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  {# ── Performance Charts (inline, below model info) ───────────────────────── #}
+  <div class="dev-card" id="viz-section">
+    <div class="dev-card-header">
+      <div class="dev-card-title">
+        <i class="fa-solid fa-chart-area"></i>
+        <h3 id="viz-section-title">Performance Charts</h3>
+      </div>
+    </div>
+
+    {# Detection charts #}
+    <div id="viz-detection" style="display:none;">
+      <div class="viz-chart-grid">
+        <div class="viz-chart-block viz-chart-block--wide">
+          <div class="viz-chart-label">Loss (train)</div>
+          <canvas id="det-chart-loss"></canvas>
+        </div>
+        <div class="viz-chart-block viz-chart-block--wide">
+          <div class="viz-chart-label">Metrics (Precision / Recall / mAP)</div>
+          <canvas id="det-chart-metrics"></canvas>
+        </div>
+      </div>
+    </div>
+
+    {# Classifier charts #}
+    <div id="viz-classifier" style="display:none;">
+      <div class="viz-chart-grid">
+        <div class="viz-chart-block">
+          <div class="viz-chart-label">Accuracy — Top-1 (%)</div>
+          <canvas id="cls-chart-acc"></canvas>
+        </div>
+        <div class="viz-chart-block">
+          <div class="viz-chart-label">Loss — Train vs Test</div>
+          <canvas id="cls-chart-loss"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/chart.umd.min.js"></script>
+<script>
+// ── Model panel switch ────────────────────────────────────────────────────────
+const modelSel = document.getElementById('dev-model-select');
+modelSel.addEventListener('change', () => {
+  document.getElementById('panel-detection').style.display  = modelSel.value === 'detection'  ? 'block' : 'none';
+  document.getElementById('panel-classifier').style.display = modelSel.value === 'classifier' ? 'block' : 'none';
+});
+
+// ── Browse helpers ────────────────────────────────────────────────────────────
+async function browseFile(inputId, types='all') {
+  try {
+    const res  = await fetch(`/browse-file?types=${types}`);
+    const data = await res.json();
+    if (data.path) document.getElementById(inputId).value = data.path;
+  } catch (_) {}
+}
+async function browseFolder(inputId) {
+  try {
+    const res  = await fetch('/browse-folder');
+    const data = await res.json();
+    if (data.path) document.getElementById(inputId).value = data.path;
+  } catch (_) {}
+}
+document.getElementById('det-browse-folder').addEventListener('click', () => browseFolder('det-dataset'));
+document.getElementById('det-browse-yaml').addEventListener('click',   () => browseFile('det-dataset', 'yaml'));
+document.getElementById('det-pt-browse').addEventListener('click',     () => browseFile('det-pretrained', 'pt'));
+document.getElementById('cls-browse').addEventListener('click',        () => browseFolder('cls-dataset'));
+document.getElementById('cls-pt-browse').addEventListener('click',     () => browseFile('cls-pretrained', 'pt'));
+
+// Hide/show split row based on whether input is a .yaml file
+function updateDetSplitVisibility() {
+  const val = document.getElementById('det-dataset').value.trim().toLowerCase();
+  const isYaml = val.endsWith('.yaml') || val.endsWith('.yml');
+  document.getElementById('det-split-row').style.opacity = isYaml ? '0.4' : '1';
+  document.getElementById('det-split-row').style.pointerEvents = isYaml ? 'none' : '';
+}
+document.getElementById('det-dataset').addEventListener('input', updateDetSplitVisibility);
+
+// ── Refresh Model Information section from API ────────────────────────────────
+async function refreshModelInfo() {
+  try {
+    const res   = await fetch('/api/develop/model-info');
+    const models = await res.json();
+
+    // Update trained badge for detection
+    const detPanel = document.getElementById('panel-detection');
+    let badge = detPanel.querySelector('.dev-trained-badge');
+    const mt_det = models.detection?.train_meta || {};
+    if (mt_det.trained_at) {
+      const html = `<i class="fa-solid fa-circle-check"></i>
+        Last trained: <strong>${mt_det.trained_at}</strong>
+        &nbsp;·&nbsp; ${mt_det.epochs} epochs
+        &nbsp;·&nbsp; dataset: <span class="dev-path" title="${mt_det.dataset_path}">${mt_det.dataset_path}</span>`;
+      if (badge) badge.innerHTML = html;
+      else { const d = document.createElement('div'); d.className='dev-trained-badge'; d.innerHTML=html; detPanel.insertBefore(d, detPanel.firstChild); }
+    }
+
+    // Update trained badge for classifier
+    const clsPanel = document.getElementById('panel-classifier');
+    let badge2 = clsPanel.querySelector('.dev-trained-badge');
+    const mt_cls = models.classifier?.train_meta || {};
+    if (mt_cls.trained_at) {
+      const splitInfo = mt_cls.split
+        ? `&nbsp;·&nbsp; split ${mt_cls.split.train}/${mt_cls.split.val}/${mt_cls.split.test}%` : '';
+      const html2 = `<i class="fa-solid fa-circle-check"></i>
+        Last trained: <strong>${mt_cls.trained_at}</strong>
+        &nbsp;·&nbsp; ${mt_cls.epochs} epochs
+        ${splitInfo}
+        &nbsp;·&nbsp; dataset: <span class="dev-path" title="${mt_cls.dataset_path}">${mt_cls.dataset_path}</span>`;
+      if (badge2) badge2.innerHTML = html2;
+      else { const d = document.createElement('div'); d.className='dev-trained-badge'; d.innerHTML=html2; clsPanel.insertBefore(d, clsPanel.firstChild); }
+    }
+
+    // Update detection performance cards
+    const dperf = models.detection?.metrics || {};
+    const detPerfEl = document.getElementById('mi-det-perf');
+    if (detPerfEl && dperf.mAP50) {
+      detPerfEl.innerHTML = `
+        <div class="dev-perf-card"><span class="dev-perf-val">${(dperf.precision*100).toFixed(1)}%</span><span class="dev-perf-lbl">Precision</span></div>
+        <div class="dev-perf-card"><span class="dev-perf-val">${(dperf.recall*100).toFixed(1)}%</span><span class="dev-perf-lbl">Recall</span></div>
+        <div class="dev-perf-card dev-perf-card--accent"><span class="dev-perf-val">${(dperf.mAP50*100).toFixed(1)}%</span><span class="dev-perf-lbl">mAP@0.5</span></div>
+        <div class="dev-perf-card"><span class="dev-perf-val">${(dperf.mAP50_95*100).toFixed(1)}%</span><span class="dev-perf-lbl">mAP@.5:.95</span></div>`;
+    }
+
+    // Update classifier class counts
+    const cc = models.classifier?.class_counts || {};
+    const ccKeys = Object.keys(cc);
+    const noDataEl = document.getElementById('mi-cls-no-data');
+    if (ccKeys.length) {
+      if (noDataEl) noDataEl.style.display = 'none';
+      const total = ccKeys.reduce((s, k) => s + cc[k], 0);
+      const totalEl = document.getElementById('mi-cls-total');
+      if (totalEl) { totalEl.textContent = total; }
+      else {
+        // first time — rebuild the whole dataset col
+        const clsPanel = document.getElementById('panel-classifier');
+        const dsCol = clsPanel.querySelector('.dev-hrow .dev-hcol');
+        if (dsCol) {
+          let html = `<div class="dev-section-title">Dataset Training</div>
+            <div class="dev-info-row"><span class="dev-info-label">Total gambar</span><span class="dev-info-value" id="mi-cls-total">${total}</span></div>
+            <div id="mi-cls-class-counts">`;
+          ccKeys.forEach(k => { html += `<div class="dev-info-row"><span class="dev-info-label">— ${k}</span><span class="dev-info-value">${cc[k]}</span></div>`; });
+          html += `</div>`;
+          dsCol.innerHTML = html;
+        }
+      }
+      // update per-class rows if container exists
+      const ccEl = document.getElementById('mi-cls-class-counts');
+      if (ccEl) {
+        ccEl.innerHTML = ccKeys.map(k =>
+          `<div class="dev-info-row"><span class="dev-info-label">— ${k}</span><span class="dev-info-value">${cc[k]}</span></div>`
+        ).join('');
+      }
+    }
+
+    // Update classifier performance cards
+    const cperf = models.classifier?.metrics || {};
+    const clsPerfEl = document.getElementById('mi-cls-perf');
+    if (clsPerfEl && cperf.acc_top1) {
+      clsPerfEl.innerHTML = `
+        <div class="dev-perf-card dev-perf-card--accent"><span class="dev-perf-val">${(cperf.acc_top1*100).toFixed(1)}%</span><span class="dev-perf-lbl">Top-1 Acc</span></div>
+        <div class="dev-perf-card"><span class="dev-perf-val">${(cperf.acc_top5*100).toFixed(1)}%</span><span class="dev-perf-lbl">Top-5 Acc</span></div>
+        <div class="dev-perf-card"><span class="dev-perf-val">${cperf.val_loss}</span><span class="dev-perf-lbl">Val Loss</span></div>`;
+    }
+  } catch (_) {}
+}
+
+// ── Generic training runner ───────────────────────────────────────────────────
+function runTraining({ mode, datasetId, pretrainedId, epochsId, batchId, imgszId,
+                       btnId, progressId, logId, fillId, stopBtnId,
+                       splitTrainId, splitValId }) {
+  const dataset     = document.getElementById(datasetId).value.trim();
+  const pretrained  = pretrainedId ? document.getElementById(pretrainedId).value.trim() : '';
+  const epochs      = document.getElementById(epochsId).value;
+  const batch       = document.getElementById(batchId).value;
+  const imgsz       = document.getElementById(imgszId).value;
+  const split_train = splitTrainId ? document.getElementById(splitTrainId).value : 70;
+  const split_val   = splitValId   ? document.getElementById(splitValId).value   : 20;
+  const btn     = document.getElementById(btnId);
+  const prog    = document.getElementById(progressId);
+  const logEl   = document.getElementById(logId);
+  const fill    = document.getElementById(fillId);
+
+  if (!dataset) { alert('Masukkan path dataset terlebih dahulu.'); return; }
+
+  btn.disabled = true;
+  prog.style.display = 'block';
+  logEl.textContent  = '';
+  fill.style.width   = '0%';
+
+  let jobId  = null;
+  let poller = null;
+  let epoch  = 0;
+
+  document.getElementById(stopBtnId).onclick = async () => {
+    if (poller) clearInterval(poller);
+    btn.disabled = false;
+    prog.style.display = 'none';
+  };
+
+  fetch('/api/develop/train', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, dataset_path: dataset, pretrained,
+                           epochs: +epochs, batch: +batch, imgsz: +imgsz,
+                           split_train: +split_train, split_val: +split_val }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    jobId  = d.job_id;
+    poller = setInterval(async () => {
+      const r2   = await fetch(`/api/develop/job/${jobId}`);
+      const data = await r2.json();
+
+      // Update log
+      if (data.log && data.log.length) {
+        logEl.textContent = data.log.join('\n');
+        logEl.scrollTop   = logEl.scrollHeight;
+        // Parse current epoch from last log line
+        const match = logEl.textContent.match(/(\d+)\/(\d+)/g);
+        if (match) {
+          const parts = match[match.length-1].split('/');
+          const pct = Math.min(100, Math.round((+parts[0] / +parts[1]) * 100));
+          fill.style.width = pct + '%';
+        }
+      }
+
+      if (data.status === 'done') {
+        clearInterval(poller);
+        fill.style.width = '100%';
+        btn.disabled     = false;
+        prog.style.display = 'none';
+        refreshModelInfo();
+        // Switch dropdown to show updated model
+        modelSel.value = mode === 'detection' ? 'detection' : 'classifier';
+        modelSel.dispatchEvent(new Event('change'));
+      } else if (data.status === 'error') {
+        clearInterval(poller);
+        btn.disabled = false;
+        logEl.textContent += '\n\n❌ ERROR: ' + (data.error || 'Unknown error');
+        fill.style.width = '0%';
+        fill.style.background = '#f85149';
+      }
+    }, 2000);
+  })
+  .catch(e => {
+    btn.disabled = false;
+    prog.style.display = 'none';
+    alert('Gagal memulai training: ' + e.message);
+  });
+}
+
+// ── Auto-compute test split ───────────────────────────────────────────────────
+function updateTestSplit(trainId, valId, testId) {
+  const tr = parseInt(document.getElementById(trainId).value) || 0;
+  const vl = parseInt(document.getElementById(valId).value)   || 0;
+  document.getElementById(testId).value = Math.max(0, 100 - tr - vl);
+}
+['det-split-train','det-split-val'].forEach(id =>
+  document.getElementById(id).addEventListener('input', () =>
+    updateTestSplit('det-split-train','det-split-val','det-split-test')));
+['cls-split-train','cls-split-val'].forEach(id =>
+  document.getElementById(id).addEventListener('input', () =>
+    updateTestSplit('cls-split-train','cls-split-val','cls-split-test')));
+
+document.getElementById('btn-det-train').addEventListener('click', () => runTraining({
+  mode: 'detection', datasetId: 'det-dataset', pretrainedId: 'det-pretrained',
+  epochsId: 'det-epochs', batchId: 'det-batch', imgszId: 'det-imgsz',
+  btnId: 'btn-det-train', progressId: 'det-progress', logId: 'det-log',
+  fillId: 'det-progress-fill', stopBtnId: 'btn-det-stop',
+  splitTrainId: 'det-split-train', splitValId: 'det-split-val',
+}));
+
+document.getElementById('btn-cls-train').addEventListener('click', () => runTraining({
+  mode: 'classifier', datasetId: 'cls-dataset', pretrainedId: 'cls-pretrained',
+  epochsId: 'cls-epochs', batchId: 'cls-batch', imgszId: 'cls-imgsz',
+  btnId: 'btn-cls-train', progressId: 'cls-progress', logId: 'cls-log',
+  fillId: 'cls-progress-fill', stopBtnId: 'btn-cls-stop',
+  splitTrainId: 'cls-split-train', splitValId: 'cls-split-val',
+}));
+
+// ── Performance Charts ────────────────────────────────────────────────────────
+const SCALE_OPTS = (label, extra) => ({
+  ticks: { color: '#8b949e', maxTicksLimit: 8 },
+  grid:  { color: 'rgba(255,255,255,0.06)' },
+  title: { display: !!label, text: label, color: '#8b949e', font: { size: 10 } },
+  ...extra,
+});
+const CHART_OPT = {
+  responsive: true, animation: false, maintainAspectRatio: false,
+  plugins: { legend: { labels: { color: '#8b949e', boxWidth: 12, font: { size: 11 } } } },
+};
+
+let _chartInstances = {};
+function mkLine(id, labels, datasets, scales) {
+  if (_chartInstances[id]) { _chartInstances[id].destroy(); }
+  const el = document.getElementById(id);
+  if (!el) return;
+  _chartInstances[id] = new Chart(el, {
+    type: 'line',
+    data: { labels, datasets },
+    options: { ...CHART_OPT, scales },
+  });
+}
+
+async function renderVizCharts(mode) {
+  try {
+    const res  = await fetch(`/api/develop/results-data?model=${mode}`);
+    const rows = await res.json();
+    if (!Array.isArray(rows) || !rows.length) return;
+    const ep = rows.map(r => +r['epoch']);
+
+    if (mode === 'detection') {
+      mkLine('det-chart-loss', ep, [
+        { label: 'Train/box',  data: rows.map(r=>+(r['train/box_loss']||0)), borderColor:'#58a6ff', backgroundColor:'transparent', tension:.3, pointRadius:0 },
+        { label: 'Train/obj',  data: rows.map(r=>+(r['train/obj_loss']||0)), borderColor:'#f0883e', backgroundColor:'transparent', tension:.3, pointRadius:0 },
+        { label: 'Train/cls',  data: rows.map(r=>+(r['train/cls_loss']||0)), borderColor:'#bc8cff', backgroundColor:'transparent', tension:.3, pointRadius:0 },
+        { label: 'Val/box',    data: rows.map(r=>+(r['val/box_loss']  ||0)), borderColor:'#58a6ff', backgroundColor:'transparent', tension:.3, pointRadius:0, borderDash:[4,3] },
+        { label: 'Val/obj',    data: rows.map(r=>+(r['val/obj_loss']  ||0)), borderColor:'#f0883e', backgroundColor:'transparent', tension:.3, pointRadius:0, borderDash:[4,3] },
+      ], { x: SCALE_OPTS('Epoch'), y: SCALE_OPTS('Loss') });
+
+      mkLine('det-chart-metrics', ep, [
+        { label:'Precision',  data:rows.map(r=>+(r['metrics/precision']      ||0)), borderColor:'#3fb950', backgroundColor:'transparent',            tension:.3, pointRadius:0 },
+        { label:'Recall',     data:rows.map(r=>+(r['metrics/recall']         ||0)), borderColor:'#58a6ff', backgroundColor:'transparent',            tension:.3, pointRadius:0 },
+        { label:'mAP@0.5',   data:rows.map(r=>+(r['metrics/mAP_0.5']        ||0)), borderColor:'#f0883e', backgroundColor:'rgba(240,136,62,0.08)',   tension:.3, pointRadius:0 },
+        { label:'mAP@.5:.95',data:rows.map(r=>+(r['metrics/mAP_0.5:0.95']  ||0)), borderColor:'#bc8cff', backgroundColor:'transparent',            tension:.3, pointRadius:0 },
+      ], { x: SCALE_OPTS('Epoch'), y: SCALE_OPTS('Value', { min:0, max:1 }) });
+
+    } else {
+      mkLine('cls-chart-acc', ep, [
+        { label:'Top-1 Accuracy (%)', data:rows.map(r=>+(r['metrics/accuracy_top1']||0)*100),
+          borderColor:'#f0883e', backgroundColor:'rgba(240,136,62,0.08)', tension:.3, pointRadius:0, fill:true },
+      ], { x: SCALE_OPTS('Epoch'), y: SCALE_OPTS('Accuracy (%)', { min:0, max:100 }) });
+
+      mkLine('cls-chart-loss', ep, [
+        { label:'Train Loss', data:rows.map(r=>+(r['train/loss']||0)),                  borderColor:'#58a6ff', backgroundColor:'transparent', tension:.3, pointRadius:0 },
+        { label:'Test Loss',  data:rows.map(r=>+(r['test/loss']||r['val/loss']||0)),    borderColor:'#bc8cff', backgroundColor:'transparent', tension:.3, pointRadius:0, borderDash:[4,3] },
+      ], { x: SCALE_OPTS('Epoch'), y: SCALE_OPTS('Loss') });
+    }
+  } catch(e) { console.error('Viz error:', e); }
+}
+
+function switchVizPanel(mode) {
+  document.getElementById('viz-section-title').textContent =
+    mode === 'detection' ? 'Detection — Performance Charts' : 'Classifier — Performance Charts';
+  document.getElementById('viz-detection').style.display  = mode === 'detection'  ? 'block' : 'none';
+  document.getElementById('viz-classifier').style.display = mode === 'classifier' ? 'block' : 'none';
+}
+
+async function switchAndRender(mode) {
+  switchVizPanel(mode);
+  // Wait for DOM repaint so canvas has correct dimensions
+  await new Promise(r => requestAnimationFrame(r));
+  await renderVizCharts(mode);
+}
+
+// Initial render
+switchAndRender(modelSel.value);
+
+// Switch chart when dropdown changes
+modelSel.addEventListener('change', () => switchAndRender(modelSel.value));
+
+</script>
+{% endblock %}

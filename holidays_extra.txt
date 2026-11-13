@@ -1,0 +1,5 @@
+# Tanggal merah tambahan untuk pengingat sensus ulang (Google Calendar).
+# Libur nasional Indonesia sudah otomatis dari library `holidays`.
+# Tambahkan di sini cuti bersama atau libur kebun, satu tanggal per baris (YYYY-MM-DD).
+# Contoh:
+# 2026-12-24

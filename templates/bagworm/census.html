@@ -1,0 +1,37 @@
+{% extends "census_page.html" %}
+
+{% block extra_form %}
+<div class="form-group">
+  <label class="form-label">
+    <i class="fa-solid fa-calendar-xmark"></i> Tanggal Pengendalian
+    <span style="font-weight:400; opacity:.7; font-size:.8em;">(opsional)</span>
+  </label>
+  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <input type="date" id="tgl-pengendalian" class="form-input" style="flex:1; min-width:140px;" />
+    <label style="display:flex; align-items:center; gap:5px; font-size:.85rem; white-space:nowrap; cursor:pointer;">
+      <input type="checkbox" id="tgl-pengendalian-none" style="width:14px; height:14px;">
+      Tidak ada pengendalian
+    </label>
+  </div>
+  <p class="form-hint">Kosongkan jika tidak ada pengendalian sebelumnya.</p>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+(function () {
+  const _tglInp = document.getElementById('tgl-pengendalian');
+  const _tglChk = document.getElementById('tgl-pengendalian-none');
+  _tglChk.addEventListener('change', function () {
+    _tglInp.disabled = this.checked;
+    if (this.checked) _tglInp.value = '';
+  });
+  window._censusExtraData = function () {
+    return { tanggal_pengendalian: _tglChk.checked ? null : (_tglInp.value || null) };
+  };
+  window._censusExtraReset = function () {
+    _tglInp.value = '';
+    _tglInp.disabled = false;
+    _tglChk.checked = false;
+  };
+})();
+{% endblock %}

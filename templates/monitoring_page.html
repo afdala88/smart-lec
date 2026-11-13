@@ -1,0 +1,1881 @@
+{% extends "base.html" %}
+{% block title %}Monitoring {{ pest.name }}{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+  <a href="/"><i class="fa-solid fa-house"></i></a>
+  <i class="fa-solid fa-chevron-right"></i>
+  <a href="/{{ pest_key }}/">{{ pest.name }}</a>
+  <i class="fa-solid fa-chevron-right"></i>
+  <span>Monitoring</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="--accent: {{ pest.color }};">
+  <div class="page-header-icon" style="background: linear-gradient(135deg, {{ pest.color }}, {{ pest.color }}99);">
+    <img src="/static/{{ pest.img }}" alt="{{ pest.name }}" class="pest-img">
+  </div>
+  <div>
+    <h1>Monitoring {{ pest.name }}</h1>
+    <p class="page-subtitle">{{ t('monitoring_subtitle') }}</p>
+  </div>
+</div>
+
+<section class="section">
+
+  {# ── Stats row ──────────────────────────────────────────────────────────── #}
+  {% set total_detected = sessions | sum(attribute='total') %}
+  {% set latest = sessions[0].created_at[:10] if sessions else t('never') %}
+  <div class="dash-stats">
+    <div class="stat-card">
+      <div class="stat-icon" style="color:{{ pest.color }}"><i class="fa-solid fa-clipboard-list"></i></div>
+      <div class="stat-body">
+        {# count distinct estate+block, not census runs #}
+        {% set _blk = namespace(keys=[]) %}
+        {% for s in sessions %}
+          {% set _k = (s.estate or '') ~ '|' ~ (s.block or '') %}
+          {% if _k not in _blk.keys %}{% set _blk.keys = _blk.keys + [_k] %}{% endif %}
+        {% endfor %}
+        <span class="stat-value">{{ _blk.keys | length }}</span>
+        <span class="stat-label">{{ t('stats_sessions') }}</span>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="color:{{ pest.color }}"><i class="fa-solid fa-bug"></i></div>
+      <div class="stat-body">
+        <span class="stat-value">{{ total_detected }}</span>
+        <span class="stat-label">{{ t('stats_detected') }}</span>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="color:{{ pest.color }}"><i class="fa-regular fa-calendar"></i></div>
+      <div class="stat-body">
+        <span class="stat-value">{{ latest }}</span>
+        <span class="stat-label">{{ t('stats_latest') }}</span>
+      </div>
+    </div>
+  </div>
+
+  {# ── Trend chart ────────────────────────────────────────────────────────── #}
+  <div class="dash-card">
+    <div class="dash-card-header">
+      <i class="fa-solid fa-chart-line" style="color:{{ pest.color }};"></i>
+      <h3>{{ t('chart_title') }}</h3>
+    </div>
+    {% if trend %}
+
+    {# Chat filter box #}
+    <div class="tf-chat-bar">
+      <i class="fa-solid fa-comment-dots" style="color:var(--text3);"></i>
+      <input type="text" id="tf-chat-input" class="tf-chat-input"
+             placeholder="{{ t('chat_filter_placeholder') }}">
+      <button type="button" id="tf-chat-submit" class="tf-chat-submit">
+        <i class="fa-solid fa-magnifying-glass"></i> {{ t('chat_filter_submit') }}
+      </button>
+    </div>
+    <div id="tf-chat-feedback" class="tf-chat-feedback" style="display:none;"></div>
+
+    {# Filter bar #}
+    <div class="trend-filters">
+
+      {# Estate multi-select #}
+      <div class="tf-group">
+        <label class="tf-label"><i class="fa-solid fa-building"></i> {{ t('label_estate') }}</label>
+        <div class="ms-wrap" id="tf-estate-wrap">
+          <button type="button" class="ms-toggle" id="tf-estate-toggle">
+            <span class="ms-label" id="tf-estate-label">{{ t('filter_all') }}</span>
+            <i class="fa-solid fa-chevron-down ms-chevron"></i>
+          </button>
+          <div class="ms-dropdown" id="tf-estate-dropdown"></div>
+        </div>
+      </div>
+
+      {# Block multi-select #}
+      <div class="tf-group">
+        <label class="tf-label"><i class="fa-solid fa-map"></i> {{ t('block_division') }}</label>
+        <div class="ms-wrap" id="tf-block-wrap">
+          <button type="button" class="ms-toggle" id="tf-block-toggle">
+            <span class="ms-label" id="tf-block-label">{{ t('filter_all') }}</span>
+            <i class="fa-solid fa-chevron-down ms-chevron"></i>
+          </button>
+          <div class="ms-dropdown" id="tf-block-dropdown"></div>
+        </div>
+      </div>
+
+      {# Month from #}
+      <div class="tf-group">
+        <label class="tf-label"><i class="fa-regular fa-calendar"></i> {{ t('filter_from_month') }}</label>
+        <input type="month" id="tf-month-from" class="tf-month-input">
+      </div>
+
+      {# Month to #}
+      <div class="tf-group">
+        <label class="tf-label"><i class="fa-regular fa-calendar"></i> {{ t('filter_to_month') }}</label>
+        <input type="month" id="tf-month-to" class="tf-month-input">
+      </div>
+
+      {# Date from / to (optional, narrows the month range to specific days) #}
+      <div class="tf-group">
+        <label class="tf-label"><i class="fa-regular fa-calendar-days"></i> {{ t('filter_from_date') }}</label>
+        <input type="date" id="tf-date-from" class="tf-month-input">
+      </div>
+      <div class="tf-group">
+        <label class="tf-label"><i class="fa-regular fa-calendar-days"></i> {{ t('filter_to_date') }}</label>
+        <input type="date" id="tf-date-to" class="tf-month-input">
+      </div>
+
+      <button class="tf-reset" id="tf-reset" title="Reset filter">
+        <i class="fa-solid fa-rotate-left"></i> Reset
+      </button>
+      <button type="button" id="tf-outbreak-toggle"
+              style="margin-left:auto; padding:4px 12px; font-size:.8rem; border-radius:6px;
+                     border:1px solid var(--border); background:var(--bg3); color:var(--text2);
+                     cursor:pointer; display:flex; align-items:center; gap:6px;">
+        <i class="fa-solid fa-map-location-dot"></i>
+        <span id="tf-outbreak-label">Tampilkan Outbreak</span>
+      </button>
+    </div>
+
+    <div id="outbreak-section" style="display:none;">
+      <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+        <button type="button" id="tf-outbreak-optimize"
+                style="padding:4px 12px; font-size:.8rem; border-radius:6px;
+                       border:1px solid var(--border); background:var(--bg3); color:var(--text2);
+                       cursor:pointer; display:flex; align-items:center; gap:6px;"
+                title="Ubah cell hijau menjadi merah jika ≥50% cell di sekelilingnya merah">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <span id="tf-outbreak-optimize-label">Optimalkan</span>
+        </button>
+      </div>
+      <div id="outbreak-summary"></div>
+      <div id="outbreak-container" class="ob-grid-container"></div>
+    </div>
+    {% else %}
+    <div class="dash-empty">
+      <i class="fa-solid fa-chart-line"></i>
+      <p>{{ t('no_sessions') }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── Analysis card ──────────────────────────────────────────────────────── #}
+  {% block analysis_card %}
+  <div class="dash-card">
+    <div class="dash-card-header">
+      <i class="fa-solid fa-magnifying-glass-chart" style="color:{{ pest.color }};"></i>
+      <h3>{{ t('chart_analysis') }}</h3>
+    </div>
+    {% if trend %}
+    <div class="trend-charts-row">
+      <div class="trend-chart-panel" id="size-dist-panel">
+        <div class="trend-chart-label"><i class="fa-solid fa-ruler"></i> {{ t('chart_size_dist') }}</div>
+        <div class="chart-wrap chart-wrap-pie">
+          <canvas id="sizeChart"></canvas>
+        </div>
+        <div class="chart-legend-hint">
+          <span><span class="clh-dot" style="background:lime;"></span> Small <span id="size-pct-s"></span></span>
+          <span><span class="clh-dot" style="background:deepskyblue;"></span> Medium <span id="size-pct-m"></span></span>
+          <span><span class="clh-dot" style="background:#f85149;"></span> Large <span id="size-pct-b"></span></span>
+        </div>
+      </div>
+      <div class="trend-chart-panel" id="gt-scatter-panel">
+        <div class="trend-chart-label"><i class="fa-solid fa-circle-dot"></i> {{ t('chart_ai_manual') }}</div>
+        <div class="gt-settings-bar">
+          <label class="gt-settings-label">
+            <i class="fa-solid fa-sliders"></i> Set GT counting
+          </label>
+          <div class="gt-settings-controls">
+            <span style="font-size:.78rem; opacity:.6;">x min</span>
+            <input type="number" id="gt-xmin-input" class="gt-settings-input"
+                   min="0" step="1" placeholder="Auto">
+            <span style="font-size:.78rem; opacity:.6;">x max</span>
+            <input type="number" id="gt-xmax-input" class="gt-settings-input"
+                   min="0" step="1" placeholder="Auto">
+            <button type="button" id="gt-xmax-apply" class="btn-gt-apply">Apply</button>
+          </div>
+        </div>
+        <div class="chart-wrap chart-wrap-pie">
+          <canvas id="gtScatterChart"></canvas>
+        </div>
+        <div class="chart-legend-hint" id="gt-scatter-legend">
+          <span><span class="clh-dot" style="background:#f0c040;"></span> Spray</span>
+          <span><span class="clh-dot" style="background:#6e7681;"></span> No Spray</span>
+        </div>
+        <div id="gt-scatter-info" style="text-align:center; font-size:.75rem; color:var(--text3); margin-top:4px;"></div>
+        <div id="gt-scatter-dist" style="text-align:center; font-size:.72rem; color:var(--text3); margin-top:3px; line-height:1.6; word-break:break-word;"></div>
+        <div id="gt-scatter-empty" style="display:none; text-align:center; font-size:.78rem; color:var(--text3); padding:1rem 0;">
+          {{ t('chart_gt_empty') }}
+        </div>
+      </div>
+    </div>
+    <div class="trend-charts-row" style="margin-top:1rem;">
+      <div class="trend-chart-panel" id="confusion-matrix-count-panel">
+        <div class="trend-chart-label"><i class="fa-solid fa-table-cells"></i> {{ t('chart_confusion_matrix') }}</div>
+        <div style="text-align:center; margin-bottom:8px;">
+          <span style="display:inline-block; font-size:.72rem; font-weight:600; color:#f0c040; background:#f0c04022; border:1px solid #f0c04055; border-radius:20px; padding:3px 12px;">{{ t('cm_mode_count') }}</span>
+        </div>
+        <div id="cm-count-content"></div>
+        <div id="cm-count-empty" style="display:none; text-align:center; font-size:.78rem; color:var(--text3); padding:1rem 0;">
+          {{ t('cm_empty') }}
+        </div>
+      </div>
+      <div class="trend-chart-panel" id="confusion-matrix-panel">
+        <div class="trend-chart-label"><i class="fa-solid fa-table-cells"></i> {{ t('chart_confusion_matrix') }}</div>
+        <div style="text-align:center; margin-bottom:8px;">
+          <span style="display:inline-block; font-size:.72rem; font-weight:600; color:#3fb950; background:#3fb95022; border:1px solid #3fb95055; border-radius:20px; padding:3px 12px;">{{ t('cm_mode_full') }}</span>
+        </div>
+        <div id="cm-content"></div>
+        <div id="cm-empty" style="display:none; text-align:center; font-size:.78rem; color:var(--text3); padding:1rem 0;">
+          {{ t('cm_empty') }}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="dash-empty">
+      <i class="fa-solid fa-magnifying-glass-chart"></i>
+      <p>{{ t('no_sessions') }}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endblock analysis_card %}
+
+  {# ── Report generator ───────────────────────────────────────────────────── #}
+  {% block report_card %}
+  <div class="dash-card" id="report-card">
+    <div class="dash-card-header">
+      <i class="fa-solid fa-file-excel" style="color:{{ pest.color }};"></i>
+      <h3>{{ t('btn_report') }}</h3>
+    </div>
+    <div class="report-form">
+
+      {# Multi-select: Kebun #}
+      <div class="report-field">
+        <label>{{ t('label_estate') }}</label>
+        <div class="ms-wrap" id="ms-estate">
+          <button type="button" class="ms-toggle" id="ms-estate-toggle">
+            <span class="ms-label" id="ms-estate-label">{{ t('label_estate') }}</span>
+            <i class="fa-solid fa-chevron-down ms-chevron"></i>
+          </button>
+          <div class="ms-dropdown" id="ms-estate-dropdown">
+            {% set estates = sessions | map(attribute='estate') | select | unique | list %}
+            {% for e in estates %}
+            <label class="ms-item">
+              <input type="checkbox" class="ms-cb-estate" value="{{ e }}"> {{ e }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      {# Multi-select: Blok #}
+      <div class="report-field">
+        <label>{{ t('block_division') }}</label>
+        <div class="ms-wrap" id="ms-block">
+          <button type="button" class="ms-toggle" id="ms-block-toggle">
+            <span class="ms-label" id="ms-block-label">{{ t('block_division') }}</span>
+            <i class="fa-solid fa-chevron-down ms-chevron"></i>
+          </button>
+          <div class="ms-dropdown" id="ms-block-dropdown"></div>
+        </div>
+      </div>
+
+      {# Date range #}
+      <div class="report-field">
+        <label for="rpt-date-from">{{ t('col_date') }} (from)</label>
+        <input type="date" id="rpt-date-from">
+      </div>
+      <div class="report-field">
+        <label for="rpt-date-to">{{ t('col_date') }} (to)</label>
+        <input type="date" id="rpt-date-to">
+      </div>
+
+      <button class="btn-generate-report" id="btn-generate-report" style="--accent:{{ pest.color }};">
+        <i class="fa-solid fa-file-excel"></i> {{ t('btn_report') }}
+      </button>
+      {% block extra_report_actions %}{% endblock %}
+    </div>
+  </div>
+  {% endblock report_card %}
+
+  {# ── Sessions table ─────────────────────────────────────────────────────── #}
+  <div class="dash-card">
+    <div class="dash-card-header">
+      <i class="fa-solid fa-table-list" style="color:{{ pest.color }};"></i>
+      <h3>{{ t('feat_history') }}</h3>
+      <button id="btn-history-toggle" class="btn-action btn-secondary"
+              style="margin-left:auto; padding:4px 12px; font-size:.8rem;">
+        <i class="fa-solid fa-eye" id="history-toggle-icon"></i>
+        <span id="history-toggle-label">Tampilkan</span>
+      </button>
+    </div>
+
+    <div id="history-filter-bar" style="display:none; padding:8px 0 4px; gap:8px; flex-wrap:wrap; align-items:center;" class="trend-filters">
+      <div class="tf-group" style="min-width:120px;">
+        <label class="tf-label">Kebun</label>
+        <select id="hist-estate-filter" class="tf-month-input" style="width:100%;">
+          <option value="">Semua</option>
+          {% set estates = sessions | map(attribute='estate') | select | unique | list %}
+          {% for e in estates %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="tf-group" style="min-width:100px;">
+        <label class="tf-label">Blok</label>
+        <select id="hist-block-filter" class="tf-month-input" style="width:100%;">
+          <option value="">Semua</option>
+          {% set blocks = sessions | map(attribute='block') | select | unique | list %}
+          {% for b in blocks %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div id="history-table-wrap" style="display:none;">
+    {% if sessions %}
+    <div class="census-table-scroll">
+      <table class="census-table" id="history-table">
+        <thead>
+          <tr>
+            <th>{{ t('col_date') }}</th>
+            <th>{{ t('label_estate') }}</th>
+            <th>{{ t('label_divisi') }}</th>
+            <th>{{ t('block_division') }}</th>
+            <th>{{ t('col_total') }}</th>
+            <th>Size S/M/L</th>
+            <th title="{{ t('lbl_ground_truth') }}">GT</th>
+            <th>Need to Visit</th>
+            <th>{{ t('col_actions') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in sessions %}
+          <tr data-estate="{{ s.estate or '' }}" data-block="{{ s.block or '' }}">
+            <td style="white-space:nowrap;">{{ s.created_at[:16] }}</td>
+            <td>{{ s.estate or '—' }}</td>
+            <td>{{ s.divisi or '—' }}</td>
+            <td>{{ s.block or '—' }}</td>
+            <td style="text-align:center; font-weight:600; color:{{ pest.color }};">{{ s.total }}</td>
+            <td>
+              {% set sz_total = (s.size_small or 0) + (s.size_medium or 0) + (s.size_big or 0) %}
+              {% if sz_total > 0 %}
+              <div class="size-pill-group">
+                {% if s.size_small  %}<span class="size-pill size-pill-small"  title="{{ t('size_small') }}">S {{ s.size_small }}  <small>({{ (s.size_small  / sz_total * 100) | round(1) }}%)</small></span>{% endif %}
+                {% if s.size_medium %}<span class="size-pill size-pill-medium" title="{{ t('size_medium') }}">M {{ s.size_medium }} <small>({{ (s.size_medium / sz_total * 100) | round(1) }}%)</small></span>{% endif %}
+                {% if s.size_big    %}<span class="size-pill size-pill-big"    title="{{ t('size_big') }}">L {{ s.size_big }}    <small>({{ (s.size_big    / sz_total * 100) | round(1) }}%)</small></span>{% endif %}
+              </div>
+              {% else %}—{% endif %}
+            </td>
+            <td style="text-align:center;">
+              {% if s.has_gt %}
+              <span style="color:var(--green2);"><i class="fa-solid fa-circle-check"></i></span>
+              {% else %}
+              <span style="color:var(--text3);">—</span>
+              {% endif %}
+            </td>
+            <td style="text-align:center;">
+              {% if s.not_confidence %}
+              <span style="color:#f85149; font-size:.8rem; font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i></span>
+              {% else %}
+              <span style="color:var(--text3);">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="tbl-actions">
+                <button class="btn-tbl-detail" data-id="{{ s.id }}" title="{{ t('btn_detail') }}">
+                  <i class="fa-solid fa-eye"></i> {{ t('btn_detail') }}
+                </button>
+                <button class="btn-tbl-download" data-id="{{ s.id }}" title="{{ t('btn_download_excel') }}">
+                  <i class="fa-solid fa-download"></i>
+                </button>
+                <button class="btn-tbl-delete" data-id="{{ s.id }}" title="{{ t('btn_delete') }}">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="dash-empty">
+      <i class="fa-solid fa-inbox"></i>
+      <p>{{ t('no_sessions') }}</p>
+      <p class="result-empty-hint">{{ t('no_sessions_hint') }}</p>
+    </div>
+    {% endif %}
+    </div>
+  </div>
+
+  {# ── Detail panel ───────────────────────────────────────────────────────── #}
+  <div class="dash-card" id="detail-panel" style="display:none;">
+    <div class="dash-card-header">
+      <i class="fa-solid fa-magnifying-glass-chart" style="color:{{ pest.color }};"></i>
+      <h3 id="detail-title">{{ t('detail_title') }}</h3>
+      <button class="btn-close-detail" id="btn-close-detail" title="Close">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div id="detail-body"></div>
+  </div>
+
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/chart.umd.min.js"></script>
+<script>
+const PEST_COLOR  = {{ pest.color | tojson }};
+const PEST_KEY    = {{ pest_key   | tojson }};
+const LANG = {
+  col_row_tree:       {{ t('col_row_tree')       | tojson }},
+  result_rows:        {{ t('result_rows')         | tojson }},
+  confirm_delete:     {{ t('confirm_delete')      | tojson }},
+  toast_deleted:      {{ t('toast_deleted')       | tojson }},
+  toast_server_error: {{ t('toast_server_error')  | tojson }},
+  toast_report_error: {{ t('toast_report_error')  | tojson }},
+  detail_title:       {{ t('detail_title')        | tojson }},
+  label_folder:       {{ t('label_folder')        | tojson }},
+  col_block:          {{ t('col_block')           | tojson }},
+  col_date:           {{ t('col_date')            | tojson }},
+  col_total:          {{ t('col_total')           | tojson }},
+  size_small:         {{ t('size_small')          | tojson }},
+  size_medium:        {{ t('size_medium')         | tojson }},
+  size_big:           {{ t('size_big')            | tojson }},
+  filter_all:         {{ t('filter_all')          | tojson }},
+  size_thr_small:     {{ t('size_thr_small')      | tojson }},
+  size_thr_medium:    {{ t('size_thr_medium')     | tojson }},
+  axis_width_norm:    {{ t('axis_width_norm')     | tojson }},
+  axis_height_norm:   {{ t('axis_height_norm')    | tojson }},
+  axis_manual_count:  {{ t('axis_manual_count')   | tojson }},
+  axis_ai_count:      {{ t('axis_ai_count')       | tojson }},
+  tbl_estate_blok:    {{ t('tbl_estate_blok')     | tojson }},
+  tbl_total_ha:       {{ t('tbl_total_ha')        | tojson }},
+  tbl_pct_spray:      {{ t('tbl_pct_spray')       | tojson }},
+  detail_gt_analysis: {{ t('detail_gt_analysis')  | tojson }},
+  lbl_manual:         {{ t('lbl_manual')           | tojson }},
+  lbl_ai:             {{ t('lbl_ai')               | tojson }},
+  cm_matched:         {{ t('cm_matched')           | tojson }},
+  cm_tp:              {{ t('cm_tp')                | tojson }},
+  cm_tn:              {{ t('cm_tn')                | tojson }},
+  cm_fp:              {{ t('cm_fp')                | tojson }},
+  cm_fn:              {{ t('cm_fn')                | tojson }},
+  cm_predicted:       {{ t('cm_predicted')         | tojson }},
+  cm_actual:          {{ t('cm_actual')            | tojson }},
+  brs_hint:           {{ t('brs_hint')             | tojson }},
+  chat_filter_no_match: {{ t('chat_filter_no_match') | tojson }},
+  chat_filter_applied:  {{ t('chat_filter_applied')  | tojson }},
+};
+
+// ── Auth-aware fetch (redirect to login on 401) ─────────────────────────────
+async function apiFetch(url, opts) {
+  const res = await fetch(url, opts);
+  if (res.status === 401) { window.location.href = '/login'; return null; }
+  return res;
+}
+
+// ── Trend chart ─────────────────────────────────────────────────────────────
+{% if trend %}
+(function () {
+  const raw = {{ trend | tojson }};
+
+  const PALETTE = [
+    PEST_COLOR,
+    '#58a6ff','#f0883e','#bc8cff','#ff7b72',
+    '#39d353','#ffa657','#79c0ff','#d2a8ff',
+  ];
+
+  // Master lists
+  const ALL_ESTATES = [...new Set(raw.map(r => r.estate).filter(Boolean))].sort();
+  const ALL_MONTHS  = [...new Set(raw.map(r => r.month))].sort();
+
+  /*
+   * Filter state:
+   *   selEstates — Set of checked estates (all = show all)
+   *   selBlocks  — Set of checked blocks. EMPTY = "Semua" → aggregate by estate only.
+   *                Non-empty → filter AND split series per estate-blok.
+   *   monthFrom / monthTo — YYYY-MM range for X-axis
+   */
+  let selEstates = new Set();
+  let selBlocks  = new Set();               // empty = Semua, group by estate
+  let monthFrom  = ALL_MONTHS[0]                          || '';
+  let monthTo    = ALL_MONTHS[ALL_MONTHS.length - 1]      || '';
+  let dateFrom   = '';   // YYYY-MM-DD, optional; overrides monthFrom when set
+  let dateTo     = '';   // YYYY-MM-DD, optional; overrides monthTo when set
+
+  // Returns blocks available for currently selected estates
+  function availableBlocks() {
+    const source = selEstates.size
+      ? raw.filter(r => selEstates.has(r.estate))
+      : raw;
+    return [...new Set(source.map(r => r.block).filter(Boolean))].sort();
+  }
+
+  let sizeChart = null;
+  const _sizeEl = document.getElementById('sizeChart');
+  const ctxSize = _sizeEl ? _sizeEl.getContext('2d') : null;
+
+  // ── Outbreak toggle ───────────────────────────────────────────────────────
+  let _showOutbreak = false;
+  let _outbreakOptimized = false;   // "Optimalkan" toggle; also drives the confusion matrices
+  const _outbreakSection = document.getElementById('outbreak-section');
+  const _outbreakToggle  = document.getElementById('tf-outbreak-toggle');
+  const _outbreakLabel   = document.getElementById('tf-outbreak-label');
+
+  function setOutbreakVisible(visible) {
+    _showOutbreak = visible;
+    _outbreakSection.style.display = visible ? 'block' : 'none';
+    _outbreakToggle.style.background = visible ? 'rgba(88,166,255,.15)' : 'var(--bg3)';
+    _outbreakToggle.style.color      = visible ? '#58a6ff' : 'var(--text2)';
+    _outbreakToggle.style.borderColor= visible ? '#58a6ff' : 'var(--border)';
+    _outbreakLabel.textContent = visible ? 'Sembunyikan Outbreak' : 'Tampilkan Outbreak';
+    if (visible) fetchOutbreak();
+  }
+
+  _outbreakToggle.addEventListener('click', () => setOutbreakVisible(!_showOutbreak));
+
+  function applyFilters() {
+    if (_showOutbreak) fetchOutbreak();
+    if (ctxSize) fetchSizeScatter();
+    if (ctxGt)   fetchGtScatter();
+    fetchConfusionMatrices();
+    fetchBlockRS();
+  }
+
+  // ── Confusion matrix (Spray / No Spray, predicted vs actual) ───────────────
+  function fetchConfusionMatrices() {
+    if (document.getElementById('cm-content'))       fetchConfusionMatrix('full',  'cm-content',       'cm-empty');
+    if (document.getElementById('cm-count-content')) fetchConfusionMatrix('count', 'cm-count-content', 'cm-count-empty');
+  }
+
+  // mode: 'full' = count + damage logic (stored Decision), 'count' = bagworm count only
+  // When the outbreak optimizer is on, predictions include its neighbor-based Spray flips.
+  async function fetchConfusionMatrix(mode, contentId, emptyId) {
+    try {
+      const params = _filterParams();
+      if (mode === 'count') params.set('mode', 'count');
+      if (_outbreakOptimized) params.set('optimize', '1');
+      const res = await apiFetch(`/api/confusion-matrix?${params}`);
+      if (!res) return;
+      const data = await res.json();
+      renderConfusionMatrix(data, contentId, emptyId);
+    } catch (_) { /* silent */ }
+  }
+
+  // ── Recall vs Specificity per block (x = Specificity, y = Recall, size = rows compared) ──
+  // Most blocks have only actual Spray or only actual No Spray trees, so one metric is often
+  // undefined. Those blocks are drawn in an "n/a" strip at the start of that axis (hollow dot)
+  // so every filtered block stays visible. Blocks landing on the same spot share one dot.
+  const _BRS_TARGET = 80;   // % target, drawn as dashed lines on both axes
+  let _brsVariant = 'full'; // 'count' | 'full' | 'full_opt'
+  let _brsChart   = null;
+
+  const _BRS_COLOR = '#58a6ff';
+
+  async function fetchBlockRS() {
+    if (!document.getElementById('brs-chart')) return;
+    try {
+      const params = _filterParams();
+      if (_brsVariant === 'count')    params.set('mode', 'count');
+      if (_brsVariant === 'full_opt') params.set('optimize', '1');
+      const res = await apiFetch(`/api/confusion-matrix?${params}`);
+      if (!res) return;
+      renderBlockRS(await res.json());
+    } catch (_) { /* silent */ }
+  }
+
+  function renderBlockRS(m) {
+    const wrap    = document.getElementById('brs-wrap');
+    const emptyEl = document.getElementById('brs-empty');
+    const infoEl  = document.getElementById('brs-info');
+    if (_brsChart) { _brsChart.destroy(); _brsChart = null; }
+
+    const rows = (m && m.by_block) || [];
+    if (!rows.length) {
+      wrap.style.display    = 'none';
+      infoEl.textContent    = '';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    wrap.style.display    = 'block';
+    emptyEl.style.display = 'none';
+    infoEl.textContent    = LANG.brs_hint.replace('{target}', _BRS_TARGET);
+
+    const multiEstate = new Set(rows.map(r => r.estate)).size > 1;
+    const name  = (r) => multiEstate ? `${r.estate} ${r.block}` : (r.block || '—');
+    const toPct = (v) => (v === null || v === undefined) ? null : +(v * 100).toFixed(1);
+
+    // Axis layout: real range [lo, 100] plus an "n/a" lane one step (10) below it
+    const axis = (vals) => {
+      const defined = vals.filter(v => v !== null);
+      const lo = defined.length
+        ? Math.max(0, Math.min(_BRS_TARGET - 10, Math.floor((Math.min(...defined) - 5) / 10) * 10))
+        : _BRS_TARGET - 10;
+      return { lo, na: lo - 10, min: lo - 15 };
+    };
+    const specs = rows.map(r => toPct(r.specificity));
+    const recs  = rows.map(r => toPct(r.recall));
+    const ax = axis(specs), ay = axis(recs);
+
+    // Group blocks that land on the same coordinates
+    const groups = new Map();
+    rows.forEach((r, i) => {
+      const x = specs[i] === null ? ax.na : specs[i];
+      const y = recs[i]  === null ? ay.na : recs[i];
+      const key = `${x}|${y}`;
+      if (!groups.has(key)) groups.set(key, { x, y, rec: recs[i], spec: specs[i], blocks: [] });
+      groups.get(key).blocks.push(r);
+    });
+    const pts   = [...groups.values()];
+    const maxN  = Math.max(...pts.map(p => p.blocks.reduce((s, r) => s + r.total, 0)));
+    pts.forEach(p => {
+      const n = p.blocks.reduce((s, r) => s + r.total, 0);
+      p.r     = 4 + 12 * Math.sqrt(n / maxN);
+      p.label = p.blocks.map(name).join(', ');
+      p.na    = p.rec === null || p.spec === null;
+    });
+
+    const overlay = {
+      id: 'brsOverlay',
+      beforeDatasetsDraw(chart) {
+        const { ctx, chartArea: a, scales: { x, y } } = chart;
+        const tx = x.getPixelForValue(_BRS_TARGET), ty = y.getPixelForValue(_BRS_TARGET);
+        const nx = x.getPixelForValue(ax.lo - 5),   ny = y.getPixelForValue(ay.lo - 5);
+        ctx.save();
+        // n/a lanes
+        ctx.fillStyle = 'rgba(255,255,255,0.04)';
+        ctx.fillRect(a.left, a.top, nx - a.left, a.bottom - a.top);
+        ctx.fillRect(a.left, ny, a.right - a.left, a.bottom - ny);
+        // Shaded "good" quadrant
+        ctx.fillStyle = 'rgba(63,185,80,0.07)';
+        ctx.fillRect(tx, a.top, a.right - tx, ty - a.top);
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.beginPath();
+        ctx.moveTo(tx, a.top); ctx.lineTo(tx, ny);
+        ctx.moveTo(nx, ty);    ctx.lineTo(a.right, ty);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.beginPath();
+        ctx.moveTo(nx, a.top);  ctx.lineTo(nx, a.bottom);
+        ctx.moveTo(a.left, ny); ctx.lineTo(a.right, ny);
+        ctx.stroke();
+        ctx.restore();
+      },
+      afterDatasetsDraw(chart) {
+        const { ctx, chartArea: a } = chart;
+        ctx.save();
+        ctx.font = '10px sans-serif';
+        ctx.fillStyle = '#c9d1d9';
+        ctx.textBaseline = 'middle';
+        chart.getDatasetMeta(0).data.forEach((el, i) => {
+          const p = pts[i];
+          const w = ctx.measureText(p.label).width;
+          // Put the label on the left when it would run off the right edge
+          const right = el.x + p.r + 3 + w <= a.right + 30;
+          ctx.textAlign = right ? 'left' : 'right';
+          ctx.fillText(p.label, right ? el.x + p.r + 3 : el.x - p.r - 3, el.y);
+        });
+        ctx.restore();
+      },
+    };
+
+    const ticksFor = (A) => (scale) => {
+      const t = [A.na];
+      for (let v = A.lo; v <= 100; v += 10) t.push(v);
+      scale.ticks = t.map(value => ({ value }));
+    };
+    const tickLabel = (A) => (v) => v === A.na ? 'n/a' : v + '%';
+
+    _brsChart = new Chart(document.getElementById('brs-chart').getContext('2d'), {
+      type: 'bubble',
+      data: {
+        datasets: [{
+          data: pts,
+          backgroundColor: pts.map(p => _BRS_COLOR + (p.na ? '33' : 'aa')),
+          borderColor:     _BRS_COLOR,
+          borderWidth:     pts.map(p => p.na ? 2 : 1),
+          clip: false,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        layout: { padding: { top: 16, right: 30 } },
+        scales: {
+          x: {
+            min: ax.min, max: 100,
+            afterBuildTicks: ticksFor(ax),
+            title: { display: true, text: 'Specificity (%)', color: '#8b949e', font: { size: 10 } },
+            ticks: { color: '#8b949e', callback: tickLabel(ax) },
+            grid:  { color: 'rgba(255,255,255,0.07)' },
+          },
+          y: {
+            min: ay.min, max: 100,
+            afterBuildTicks: ticksFor(ay),
+            title: { display: true, text: 'Recall (%)', color: '#8b949e', font: { size: 10 } },
+            ticks: { color: '#8b949e', callback: tickLabel(ay) },
+            grid:  { color: 'rgba(255,255,255,0.07)' },
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => items[0].raw.label,
+              label: (c) => {
+                const p = c.raw;
+                const fmt = (v) => v === null ? 'n/a' : v + '%';
+                return `Recall: ${fmt(p.rec)}   Specificity: ${fmt(p.spec)}`;
+              },
+            },
+          },
+        },
+      },
+      plugins: [overlay],
+    });
+  }
+
+  document.querySelectorAll('.brs-variant').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.brs-variant').forEach(b => b.classList.toggle('active', b === btn));
+      _brsVariant = btn.dataset.variant;
+      fetchBlockRS();
+    });
+  });
+
+  function renderConfusionMatrix(m, contentId, emptyId) {
+    const contentEl = document.getElementById(contentId);
+    const emptyEl   = document.getElementById(emptyId);
+    if (!contentEl) return;
+
+    if (!m || !m.total) {
+      contentEl.innerHTML   = '';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+
+    const pct = (v) => (v === null || v === undefined) ? '—' : (v * 100).toFixed(1) + '%';
+
+    contentEl.innerHTML = `
+      <div class="gt-metrics">
+        <div class="gt-metric-card">
+          <div class="gm-value">${pct(m.accuracy)}</div>
+          <div class="gm-label">Accuracy</div>
+        </div>
+        <div class="gt-metric-card">
+          <div class="gm-value">${pct(m.precision)}</div>
+          <div class="gm-label">Precision</div>
+        </div>
+        <div class="gt-metric-card">
+          <div class="gm-value">${pct(m.recall)}</div>
+          <div class="gm-label">Recall</div>
+        </div>
+        <div class="gt-metric-card">
+          <div class="gm-value">${pct(m.specificity)}</div>
+          <div class="gm-label">Specificity</div>
+        </div>
+      </div>
+      <div style="font-size:.75rem; opacity:.6; text-align:center; margin:6px 0;">
+        ${m.total} ${LANG.cm_matched}
+      </div>
+      <table style="width:100%; border-collapse:collapse; font-size:.8rem; margin-top:6px;">
+        <thead>
+          <tr>
+            <th style="padding:6px; text-align:center; color:var(--text3); font-weight:500;"></th>
+            <th style="padding:6px; text-align:center; color:var(--text3); font-weight:500;" colspan="2">${LANG.cm_actual}</th>
+          </tr>
+          <tr>
+            <th style="padding:6px; text-align:center; color:var(--text3); font-weight:500;">${LANG.cm_predicted}</th>
+            <th style="padding:6px; text-align:center; color:var(--text3); font-weight:500;">Spray</th>
+            <th style="padding:6px; text-align:center; color:var(--text3); font-weight:500;">No Spray</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:6px; text-align:center; color:var(--text3); font-weight:500;">Spray</td>
+            <td style="padding:10px; text-align:center; background:#3fb95022; border:1px solid var(--border); border-radius:6px;">
+              <div style="font-weight:700; font-size:1rem; color:#3fb950;">${m.tp}</div>
+              <div style="font-size:.68rem; opacity:.7;">${LANG.cm_tp}</div>
+            </td>
+            <td style="padding:10px; text-align:center; background:#f8514922; border:1px solid var(--border); border-radius:6px;">
+              <div style="font-weight:700; font-size:1rem; color:#f85149;">${m.fp}</div>
+              <div style="font-size:.68rem; opacity:.7;">${LANG.cm_fp}</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:6px; text-align:center; color:var(--text3); font-weight:500;">No Spray</td>
+            <td style="padding:10px; text-align:center; background:#f8514922; border:1px solid var(--border); border-radius:6px;">
+              <div style="font-weight:700; font-size:1rem; color:#f85149;">${m.fn}</div>
+              <div style="font-size:.68rem; opacity:.7;">${LANG.cm_fn}</div>
+            </td>
+            <td style="padding:10px; text-align:center; background:#3fb95022; border:1px solid var(--border); border-radius:6px;">
+              <div style="font-weight:700; font-size:1rem; color:#3fb950;">${m.tn}</div>
+              <div style="font-size:.68rem; opacity:.7;">${LANG.cm_tn}</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  }
+
+  // ── Outbreak grid ─────────────────────────────────────────────────────────
+  function _filterParams() {
+    const activeEstates = selEstates.size ? [...selEstates] : ALL_ESTATES;
+    const activeBlocks  = selBlocks.size  ? [...selBlocks]  : [];
+    const params = new URLSearchParams({ pest: PEST_KEY });
+    activeEstates.forEach(e => params.append('estates', e));
+    activeBlocks.forEach(b  => params.append('blocks',  b));
+    // Specific dates, when set, take priority over the month range
+    const from = dateFrom || (monthFrom ? monthFrom + '-01' : '');
+    const to   = dateTo   || (monthTo   ? monthTo   + '-31' : '');
+    if (from) params.set('date_from', from);
+    if (to)   params.set('date_to',   to);
+    return params;
+  }
+
+  async function fetchOutbreak() {
+    try {
+      const res  = await apiFetch(`/api/outbreak?${_filterParams()}`);
+      if (!res) return;
+      const data = await res.json();
+      renderOutbreak(data);
+      if (_outbreakOptimized) optimizeOutbreak();
+    } catch (_) { /* silent */ }
+  }
+
+  let _lastOutbreakSessions = null;
+
+  function renderOutbreak(sessions) {
+    const summary   = document.getElementById('outbreak-summary');
+    const container = document.getElementById('outbreak-container');
+
+    _lastOutbreakSessions = sessions;
+
+    if (!sessions || !sessions.length) {
+      summary.innerHTML   = '';
+      container.innerHTML = `<div class="dash-empty" style="padding:1.5rem 0;">
+        <i class="fa-solid fa-file-circle-xmark"></i>
+        <p style="margin-top:.5rem; color:var(--text3); font-size:.85rem;">Belum ada data untuk periode ini</p>
+      </div>`;
+      return;
+    }
+
+    // ── Aggregate summary bar (exclude NC from totals) ────────────────────
+    const confSessions = sessions.filter(s => !s.not_confidence);
+    const totSpray   = confSessions.reduce((a, s) => a + (s.spray    || 0), 0);
+    const totNoSpray = confSessions.reduce((a, s) => a + (s.no_spray || 0), 0);
+    const totHa      = totSpray + totNoSpray;
+    const aggPct     = totHa ? (totSpray / totHa * 100).toFixed(1) : '—';
+    const ncCount    = sessions.length - confSessions.length;
+
+    summary.innerHTML = `
+      <div class="ob-summary-bar">
+        <span class="ob-sum-item"><i class="fa-solid fa-layer-group"></i> ${new Set(sessions.map(s => (s.estate || '') + '|' + (s.block || ''))).size} blocks</span>
+        <span class="ob-sum-item"><i class="fa-solid fa-map"></i> ${totHa} Ha</span>
+        <span class="ob-sum-item ob-sum-spray"><i class="fa-solid fa-spray-can-sparkles"></i> ${aggPct}% Spray</span>
+        ${ncCount > 0 ? `<span class="ob-sum-item" style="color:#f0a500;"><i class="fa-solid fa-triangle-exclamation"></i> ${ncCount} Need to Visit</span>` : ''}
+        <span class="ob-sum-item"><span class="ob-leg-dot" style="background:#f85149;"></span> Spray</span>
+        <span class="ob-sum-item"><span class="ob-leg-dot" style="background:#3fb950;"></span> No Spray</span>
+        <span class="ob-sum-item"><span class="ob-leg-dot" style="background:#3a3f47;border:1px solid #555;"></span> No Data</span>
+      </div>`;
+
+    // ── Cards ─────────────────────────────────────────────────────────────
+    container.innerHTML = sessions.map((s, si) => {
+      const pct     = s.spray_pct != null ? s.spray_pct.toFixed(1) + '% Spray' : '—';
+      const pctCls  = (s.spray_pct || 0) > 50 ? 'ob-badge-spray' : 'ob-badge-nospray';
+      const dateStr = [s.date_from, s.date_to].filter(Boolean).join(' → ');
+
+      // Grid table
+      const sizeLbl = { small: 'small-size', medium: 'medium-size', big: 'big-size' }[s.dominant_size] || null;
+      const sizeInfo = sizeLbl ? `${sizeLbl} (${s.dominant_size_pct}%)` : '—';
+
+      const colHeaders = s.cols.map(c => `<th>${c}</th>`).join('');
+      const bodyRows = s.grid.map((row, ri) => {
+        const cells = row.cells.map((cell, ci) => {
+          const cls = !cell.dec ? 'ob-cell-nodata'
+                    : cell.dec === 'Spray' ? 'ob-cell-spray'
+                    : 'ob-cell-nospray';
+          const valTxt   = cell.dec && cell.val ? cell.val : '';
+          const dmaxInfo = cell.dmax != null ? `Damage: ${cell.dmax}%` : '';
+          const cellTitle = [sizeInfo, dmaxInfo].filter(Boolean).join(' | ');
+          return `<td class="ob-cell ${cls}" data-si="${si}" data-ri="${ri}" data-ci="${ci}" title="${cellTitle}">${valTxt}</td>`;
+        }).join('');
+        return `<tr><td class="ob-row-lbl">${row.row}</td>${cells}</tr>`;
+      }).join('');
+
+      const ncMark = s.not_confidence ? `
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);
+          font-size:2.4rem;font-weight:800;color:rgba(255,255,255,0.18);white-space:nowrap;
+          pointer-events:none;z-index:2;letter-spacing:2px;">Need to Visit</div>` : '';
+
+      return `
+      <div class="ob-card" style="position:relative; overflow:hidden;">
+        ${ncMark}
+        <div class="ob-card-header">
+          <div>
+            <strong>${s.estate || '—'}</strong>
+            <span class="ob-card-block"> · ${s.block || '—'}</span>
+            ${dateStr ? `<div class="ob-card-date">${dateStr}</div>` : ''}
+          </div>
+          <div style="text-align:right;">
+            <span class="ob-badge ${pctCls}">${pct}</span>
+            ${s.not_confidence ? '<span style="display:inline-block;margin-left:4px;font-size:.7rem;color:#f85149;" title="Need to Visit"><i class="fa-solid fa-triangle-exclamation"></i></span>' : ''}
+            <div class="ob-avg-larvae">Avg: ${s.avg_larvae}</div>
+          </div>
+        </div>
+        <div class="ob-grid-wrap">
+          <table class="ob-table">
+            <thead><tr><th>B\P</th>${colHeaders}</tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Outbreak optimize (neighbor-aware recoloring) ───────────────────────────
+  function optimizeOutbreak() {
+    if (!_lastOutbreakSessions) return;
+
+    _lastOutbreakSessions.forEach((s, si) => {
+      const grid = s.grid;
+      grid.forEach((row, ri) => {
+        row.cells.forEach((cell, ci) => {
+          // Only reconsider cells currently green (val < 2, has data).
+          if (cell.val == null || cell.val >= 2) return;
+
+          // Neighbors are judged on their original values, so flips don't cascade.
+          let redNeighbors = 0;
+          let totalNeighbors = 0;
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              const nRow = grid[ri + dr];
+              if (!nRow) continue;
+              const nCell = nRow.cells[ci + dc];
+              if (!nCell || nCell.val == null) continue;
+              totalNeighbors++;
+              if (nCell.val >= 2) redNeighbors++;
+            }
+          }
+          if (!totalNeighbors || redNeighbors / totalNeighbors < 0.5) return; // <50% red, leave green
+
+          const td = document.querySelector(`#outbreak-container td.ob-cell[data-si="${si}"][data-ri="${ri}"][data-ci="${ci}"]`);
+          if (td) {
+            td.classList.remove('ob-cell-spray', 'ob-cell-nospray', 'ob-cell-warn', 'ob-cell-nodata');
+            td.classList.add('ob-cell-spray');
+          }
+        });
+      });
+    });
+  }
+
+  // optimizeOutbreak() only recolors the DOM, so re-rendering restores the original colors.
+  function setOutbreakOptimized(on) {
+    _outbreakOptimized = on;
+    const btn = _outbreakOptimizeBtn;
+    btn.style.background  = on ? 'rgba(88,166,255,.15)' : 'var(--bg3)';
+    btn.style.color       = on ? '#58a6ff' : 'var(--text2)';
+    btn.style.borderColor = on ? '#58a6ff' : 'var(--border)';
+    document.getElementById('tf-outbreak-optimize-label').textContent = on ? 'Matikan Optimasi' : 'Optimalkan';
+    if (_lastOutbreakSessions) {
+      renderOutbreak(_lastOutbreakSessions);
+      if (on) optimizeOutbreak();
+    }
+    fetchConfusionMatrices();
+  }
+
+  const _outbreakOptimizeBtn = document.getElementById('tf-outbreak-optimize');
+  if (_outbreakOptimizeBtn) {
+    _outbreakOptimizeBtn.addEventListener('click', () => setOutbreakOptimized(!_outbreakOptimized));
+  }
+
+  // ── Size scatter chart ───────────────────────────────────────────────────
+  async function fetchSizeScatter() {
+    try {
+      const res    = await apiFetch(`/api/size-scatter?${_filterParams()}`);
+      if (!res) return;
+      const points = await res.json();
+      renderSizeScatter(points);
+    } catch (_) { /* silent */ }
+  }
+
+  function _setSizePct(id, txt) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = txt;
+  }
+
+  function renderSizeScatter(allPts) {
+    if (!ctxSize) return;
+    if (sizeChart) sizeChart.destroy();
+    if (!allPts.length) {
+      sizeChart = null;
+      ['size-pct-s', 'size-pct-m', 'size-pct-b'].forEach(id => _setSizePct(id, ''));
+      return;
+    }
+
+    const ptS = allPts.filter(p => p.c === 'S');
+    const ptM = allPts.filter(p => p.c === 'M');
+    const ptB = allPts.filter(p => p.c === 'B');
+
+    const totS = ptS.length, totM = ptM.length, totB = ptB.length;
+    const tot  = allPts.length;
+    const pct  = v => tot ? (v / tot * 100).toFixed(1) : '0.0';
+
+    _setSizePct('size-pct-s', `${pct(totS)}% (${totS})`);
+    _setSizePct('size-pct-m', `${pct(totM)}% (${totM})`);
+    _setSizePct('size-pct-b', `${pct(totB)}% (${totB})`);
+
+    // Threshold curves: y = k/x  where k = area threshold in normalised space
+    const maxArea = Math.max(...allPts.map(p => p.x * p.y));
+    const thrS    = 0.30 * maxArea;
+    const thrM    = 0.70 * maxArea;
+    const xMin = 0.001, xMax = 0.10, steps = 200;
+    function hyperbola(k) {
+      const pts = [];
+      for (let i = 0; i <= steps; i++) {
+        const x = xMin + (xMax - xMin) * i / steps;
+        const y = k / x;
+        if (y <= 0.10) pts.push({ x: +x.toFixed(5), y: +y.toFixed(5) });
+      }
+      return pts;
+    }
+
+    sizeChart = new Chart(ctxSize, {
+      type: 'scatter',
+      data: {
+        datasets: [
+          {
+            label: `${LANG.size_small} (${totS}) — ${pct(totS)}%`,
+            data: ptS, pointRadius: 3, pointHoverRadius: 5,
+            backgroundColor: 'rgba(0,255,0,0.75)', borderColor: 'lime', borderWidth: 0,
+          },
+          {
+            label: `${LANG.size_medium} (${totM}) — ${pct(totM)}%`,
+            data: ptM, pointRadius: 3, pointHoverRadius: 5,
+            backgroundColor: 'rgba(0,191,255,0.75)', borderColor: 'deepskyblue', borderWidth: 0,
+          },
+          {
+            label: `${LANG.size_big} (${totB}) — ${pct(totB)}%`,
+            data: ptB, pointRadius: 4, pointHoverRadius: 6,
+            backgroundColor: 'rgba(248,81,73,0.85)', borderColor: '#f85149', borderWidth: 0,
+          },
+          {
+            label: LANG.size_thr_small,
+            data: hyperbola(thrS), type: 'line',
+            borderColor: 'yellow', borderWidth: 1.5, borderDash: [5, 4],
+            pointRadius: 0, fill: false, tension: 0,
+          },
+          {
+            label: LANG.size_thr_medium,
+            data: hyperbola(thrM), type: 'line',
+            borderColor: 'orange', borderWidth: 1.5, borderDash: [5, 4],
+            pointRadius: 0, fill: false, tension: 0,
+          },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        backgroundColor: '#0d1117',
+        scales: {
+          x: {
+            type: 'linear', min: 0, max: 0.10,
+            title: { display: true, text: LANG.axis_width_norm, color: '#8b949e' },
+            ticks: { color: '#8b949e', maxTicksLimit: 6 },
+            grid:  { color: 'rgba(255,255,255,0.08)' },
+          },
+          y: {
+            type: 'linear', min: 0, max: 0.10,
+            title: { display: true, text: LANG.axis_height_norm, color: '#8b949e' },
+            ticks: { color: '#8b949e', maxTicksLimit: 6 },
+            grid:  { color: 'rgba(255,255,255,0.08)' },
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (c) => {
+                if (c.dataset.type === 'line') return c.dataset.label;
+                return ` (${c.parsed.x.toFixed(4)}, ${c.parsed.y.toFixed(4)})`;
+              }
+            }
+          }
+        },
+      }
+    });
+  }
+
+  // ── GT vs AI scatter chart ────────────────────────────────────────────────
+  let gtChart    = null;
+  let _gtXMin    = null;   // null = auto
+  let _gtXMax    = null;   // null = auto
+  let _lastGtPts = [];
+  const _gtEl    = document.getElementById('gtScatterChart');
+  const ctxGt    = _gtEl ? _gtEl.getContext('2d') : null;
+
+  const _applyBtn = document.getElementById('gt-xmax-apply');
+  if (_applyBtn) _applyBtn.addEventListener('click', () => {
+    const rawMin = document.getElementById('gt-xmin-input').value.trim();
+    const rawMax = document.getElementById('gt-xmax-input').value.trim();
+    _gtXMin = rawMin !== '' && +rawMin >= 0 ? +rawMin : null;
+    _gtXMax = rawMax !== '' && +rawMax > 0  ? +rawMax : null;
+    renderGtScatter(_lastGtPts);
+  });
+
+  async function fetchGtScatter() {
+    try {
+      const res    = await apiFetch(`/api/gt-scatter?${_filterParams()}`);
+      if (!res) return;
+      const points = await res.json();
+      _lastGtPts   = points;
+      renderGtScatter(points);
+    } catch (_) { /* silent */ }
+  }
+
+  function renderGtScatter(pts) {
+    if (!ctxGt) return;
+    if (gtChart) { gtChart.destroy(); gtChart = null; }
+
+    const emptyEl  = document.getElementById('gt-scatter-empty');
+    const legendEl = document.getElementById('gt-scatter-legend');
+    const infoEl   = document.getElementById('gt-scatter-info');
+
+    if (!pts || !pts.length) {
+      emptyEl.style.display  = 'block';
+      legendEl.style.display = 'none';
+      if (infoEl)  infoEl.textContent  = '';
+      const _distClr = document.getElementById('gt-scatter-dist');
+      if (_distClr) _distClr.textContent = '';
+      return;
+    }
+    emptyEl.style.display  = 'none';
+    legendEl.style.display = 'flex';
+
+    // Swap axes: x = Manual (GT), y = AI
+    const ptSpray   = pts.filter(p => p.d === 'Spray')
+                         .map(p => ({ x: p.y, y: p.x, bp: p.bp }));
+    const ptNoSpray = pts.filter(p => p.d === 'No Spray')
+                         .map(p => ({ x: p.y, y: p.x, bp: p.bp }));
+    const ptOther   = pts.filter(p => p.d !== 'Spray' && p.d !== 'No Spray')
+                         .map(p => ({ x: p.y, y: p.x, bp: p.bp }));
+
+    gtChart = new Chart(ctxGt, {
+      type: 'scatter',
+      data: {
+        datasets: [
+          {
+            label: `Spray (${ptSpray.length})`,
+            data: ptSpray,
+            pointRadius: 4, pointHoverRadius: 6,
+            backgroundColor: 'rgba(240,192,64,0.85)',
+            borderColor: '#f0c040', borderWidth: 0,
+          },
+          {
+            label: `No Spray (${ptNoSpray.length})`,
+            data: ptNoSpray,
+            pointRadius: 4, pointHoverRadius: 6,
+            backgroundColor: 'rgba(110,118,129,0.75)',
+            borderColor: '#6e7681', borderWidth: 0,
+          },
+          ...(ptOther.length ? [{
+            label: `Other (${ptOther.length})`,
+            data: ptOther,
+            pointRadius: 3, pointHoverRadius: 5,
+            backgroundColor: 'rgba(255,255,255,0.4)',
+            borderColor: '#fff', borderWidth: 0,
+          }] : []),
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        backgroundColor: '#0d1117',
+        scales: {
+          x: {
+            type: 'linear', min: 0,
+            ...(_gtXMin !== null ? { min: _gtXMin } : {}),
+            ...(_gtXMax !== null ? { max: _gtXMax } : {}),
+            title: { display: true, text: LANG.axis_manual_count, color: '#8b949e', font: { size: 10 } },
+            ticks: { color: '#8b949e', maxTicksLimit: 6 },
+            grid:  { color: 'rgba(255,255,255,0.07)' },
+          },
+          y: {
+            type: 'linear', min: 0,
+            title: { display: true, text: LANG.axis_ai_count, color: '#8b949e', font: { size: 10 } },
+            ticks: { color: '#8b949e', maxTicksLimit: 6 },
+            grid:  { color: 'rgba(255,255,255,0.07)' },
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (c) => {
+                const p = c.raw;
+                return `${p.bp || ''}  ${LANG.lbl_manual}: ${p.x.toFixed(2)}, ${LANG.lbl_ai}: ${p.y.toFixed(2)}`;
+              },
+            },
+          },
+        },
+      },
+    });
+    // Filter visible points by x min/max axis range
+    const allSwapped = [...ptSpray, ...ptNoSpray, ...ptOther];
+    const visiblePts = allSwapped.filter(p => {
+      if (_gtXMin !== null && p.x < _gtXMin) return false;
+      if (_gtXMax !== null && p.x > _gtXMax) return false;
+      return true;
+    });
+
+    // R² from linear regression on visible points
+    const distEl = document.getElementById('gt-scatter-dist');
+    let r2Text = '';
+    if (visiblePts.length >= 2) {
+      const n   = visiblePts.length;
+      const xm  = visiblePts.reduce((s, p) => s + p.x, 0) / n;
+      const ym  = visiblePts.reduce((s, p) => s + p.y, 0) / n;
+      const sxy = visiblePts.reduce((s, p) => s + (p.x - xm) * (p.y - ym), 0);
+      const sxx = visiblePts.reduce((s, p) => s + (p.x - xm) ** 2, 0);
+      if (sxx > 0) {
+        const b     = sxy / sxx;
+        const a     = ym - b * xm;
+        const ssRes = visiblePts.reduce((s, p) => s + (p.y - (a + b * p.x)) ** 2, 0);
+        const ssTot = visiblePts.reduce((s, p) => s + (p.y - ym) ** 2, 0);
+        const r2    = ssTot > 0 ? 1 - ssRes / ssTot : 1;
+        r2Text = `  |  R² : ${r2.toFixed(4)}`;
+      }
+    }
+    if (infoEl) infoEl.textContent = `Titik sensus : ${visiblePts.length}${r2Text}`;
+
+    // Distribution: count visible points per unique X (rounded to integer)
+    if (distEl) {
+      const xCount = {};
+      for (const p of visiblePts) {
+        const xKey = Math.round(p.x);
+        xCount[xKey] = (xCount[xKey] || 0) + 1;
+      }
+      const sorted = Object.keys(xCount).map(Number).sort((a, b) => a - b);
+      if (sorted.length) {
+        distEl.textContent = 'x: ' + sorted.map(x => `${x}→${xCount[x]}`).join('  ');
+      } else {
+        distEl.textContent = '';
+      }
+    }
+  }
+
+  // ── Dropdown helper ───────────────────────────────────────────────────────
+  function makeDropdown(toggleId, dropdownId) {
+    const toggle   = document.getElementById(toggleId);
+    const dropdown = document.getElementById(dropdownId);
+    let open = false;
+    toggle.addEventListener('click', e => {
+      e.stopPropagation();
+      open = !open;
+      dropdown.classList.toggle('ms-open', open);
+      toggle.querySelector('.ms-chevron').style.transform = open ? 'rotate(180deg)' : '';
+    });
+    document.addEventListener('click', e => {
+      if (!toggle.parentElement.contains(e.target)) {
+        open = false;
+        dropdown.classList.remove('ms-open');
+        toggle.querySelector('.ms-chevron').style.transform = '';
+      }
+    });
+  }
+  makeDropdown('tf-estate-toggle', 'tf-estate-dropdown');
+  makeDropdown('tf-block-toggle',  'tf-block-dropdown');
+
+  // ── Estate dropdown ───────────────────────────────────────────────────────
+  function updateEstateLabel() {
+    const el = document.getElementById('tf-estate-label');
+    el.textContent = (selEstates.size === 0 || selEstates.size === ALL_ESTATES.length)
+      ? LANG.filter_all : [...selEstates].join(', ');
+  }
+
+  function buildEstateDropdown() {
+    const dd = document.getElementById('tf-estate-dropdown');
+    dd.innerHTML = '';
+    ALL_ESTATES.forEach(val => {
+      const lbl = document.createElement('label');
+      lbl.className = 'ms-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = val; cb.checked = selEstates.has(val);
+      cb.addEventListener('change', () => {
+        cb.checked ? selEstates.add(val) : selEstates.delete(val);
+        // Drop blocks no longer available for selected estates
+        const avail = availableBlocks();
+        [...selBlocks].forEach(b => { if (!avail.includes(b)) selBlocks.delete(b); });
+        updateEstateLabel();
+        updateBlockLabel();
+        applyFilters();
+      });
+      lbl.appendChild(cb); lbl.append(' ' + val);
+      dd.appendChild(lbl);
+    });
+  }
+  // Rebuild estate dropdown on every open so checkboxes stay in sync
+  document.getElementById('tf-estate-toggle').addEventListener('click', buildEstateDropdown);
+
+  // ── Block dropdown (dynamic per estate selection) ─────────────────────────
+  function updateBlockLabel() {
+    const el = document.getElementById('tf-block-label');
+    el.textContent = selBlocks.size === 0 ? LANG.filter_all : [...selBlocks].join(', ');
+  }
+
+  function buildBlockDropdown() {
+    const avail = availableBlocks();
+    const dd = document.getElementById('tf-block-dropdown');
+    dd.innerHTML = '';
+    if (!avail.length) { dd.innerHTML = '<span class="ms-empty">—</span>'; return; }
+    avail.forEach(val => {
+      const lbl = document.createElement('label');
+      lbl.className = 'ms-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = val; cb.checked = selBlocks.has(val);
+      cb.addEventListener('change', () => {
+        cb.checked ? selBlocks.add(val) : selBlocks.delete(val);
+        updateBlockLabel();
+        applyFilters();
+      });
+      lbl.appendChild(cb); lbl.append(' ' + val);
+      dd.appendChild(lbl);
+    });
+  }
+  document.getElementById('tf-block-toggle').addEventListener('click', buildBlockDropdown);
+
+  // ── Month range ───────────────────────────────────────────────────────────
+  const inputFrom = document.getElementById('tf-month-from');
+  const inputTo   = document.getElementById('tf-month-to');
+  inputFrom.value = monthFrom;
+  inputTo.value   = monthTo;
+
+  inputFrom.addEventListener('change', () => {
+    monthFrom = inputFrom.value || ALL_MONTHS[0];
+    if (monthFrom > monthTo) { monthTo = monthFrom; inputTo.value = monthTo; }
+    applyFilters();
+  });
+  inputTo.addEventListener('change', () => {
+    monthTo = inputTo.value || ALL_MONTHS[ALL_MONTHS.length - 1];
+    if (monthTo < monthFrom) { monthFrom = monthTo; inputFrom.value = monthFrom; }
+    applyFilters();
+  });
+
+  // ── Date range (optional, overrides month bounds) ─────────────────────────
+  const inputDateFrom = document.getElementById('tf-date-from');
+  const inputDateTo   = document.getElementById('tf-date-to');
+
+  function _clearDates() {
+    dateFrom = dateTo = '';
+    inputDateFrom.value = inputDateTo.value = '';
+  }
+
+  inputDateFrom.addEventListener('change', () => {
+    dateFrom = inputDateFrom.value || '';
+    if (dateFrom && dateTo && dateFrom > dateTo) { dateTo = dateFrom; inputDateTo.value = dateTo; }
+    applyFilters();
+  });
+  inputDateTo.addEventListener('change', () => {
+    dateTo = inputDateTo.value || '';
+    if (dateFrom && dateTo && dateTo < dateFrom) { dateFrom = dateTo; inputDateFrom.value = dateFrom; }
+    applyFilters();
+  });
+
+  // ── Reset ─────────────────────────────────────────────────────────────────
+  document.getElementById('tf-reset').addEventListener('click', () => {
+    selEstates = new Set(ALL_ESTATES);
+    selBlocks  = new Set();
+    monthFrom  = ALL_MONTHS[0]                     || '';
+    monthTo    = ALL_MONTHS[ALL_MONTHS.length - 1] || '';
+    inputFrom.value = monthFrom;
+    inputTo.value   = monthTo;
+    _clearDates();
+    updateEstateLabel();
+    updateBlockLabel();
+    applyFilters();
+  });
+
+  // ── Chat filter parser ──────────────────────────────────────────────────
+  const MONTH_NAMES_ID = {
+    januari: 1, jan: 1, februari: 2, feb: 2, maret: 3, mar: 3, april: 4, apr: 4,
+    mei: 5, may: 5, juni: 6, jun: 6, juli: 7, jul: 7, agustus: 8, agu: 8, ags: 8, aug: 8,
+    september: 9, sep: 9, sept: 9, oktober: 10, okt: 10, oct: 10,
+    november: 11, nov: 11, desember: 12, des: 12, dec: 12,
+  };
+
+  function _normTok(s) { return s.toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+  function parseChatFilter(text) {
+    const lower  = text.toLowerCase();
+    // tokens: alnum runs, optionally hyphenated (e.g. "a-55" stays one token)
+    const tokens = (lower.match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) || []).map(_normTok);
+    const result = { estates: [], blocks: [], months: [], allBlocks: false, allEstates: false };
+
+    if (/\bsemua\s+lokasi\b|\bsemua\s+kebun\b|\bsemua\s+estate\b|\ball\s+(?:locations?|estates?)\b/.test(lower)) {
+      result.allEstates = true;
+    } else {
+      ALL_ESTATES.forEach(e => {
+        if (tokens.includes(_normTok(e))) result.estates.push(e);
+      });
+    }
+
+    if (/\bsemua\s+blok\b|\bsemua\s+block\b|\ball\s+blocks?\b/.test(lower)) {
+      result.allBlocks = true;
+    } else {
+      const source = result.estates.length
+        ? raw.filter(r => result.estates.includes(r.estate))
+        : raw;
+      const candidateBlocks = [...new Set(source.map(r => r.block).filter(Boolean))];
+      candidateBlocks.forEach(b => {
+        if (tokens.includes(_normTok(b))) result.blocks.push(b);
+      });
+    }
+
+    const yearMatch  = lower.match(/\b(20\d{2})\b/);
+    const monthHits  = [];
+    Object.keys(MONTH_NAMES_ID).forEach(name => {
+      const re = new RegExp('\\b' + name + '\\b');
+      if (re.test(lower)) monthHits.push(MONTH_NAMES_ID[name]);
+    });
+    const ymMatch = lower.match(/\b20\d{2}-(\d{2})\b/);
+    if (ymMatch) monthHits.push(parseInt(ymMatch[1], 10));
+
+    if (monthHits.length) {
+      const resolveYm = (monthNum) => {
+        const mmStr = String(monthNum).padStart(2, '0');
+        if (yearMatch) return yearMatch[1] + '-' + mmStr;
+        const matches = ALL_MONTHS.filter(m => m.slice(5, 7) === mmStr);
+        if (matches.length) return matches[matches.length - 1];
+        return new Date().getFullYear() + '-' + mmStr;
+      };
+      result.months = [resolveYm(Math.min(...monthHits)), resolveYm(Math.max(...monthHits))];
+    }
+
+    return result;
+  }
+
+  function applyChatFilter() {
+    const input    = document.getElementById('tf-chat-input');
+    const feedback = document.getElementById('tf-chat-feedback');
+    const text     = (input.value || '').trim();
+    feedback.style.display = 'none';
+    if (!text) return;
+
+    const parsed = parseChatFilter(text);
+    const parts  = [];
+
+    if (parsed.allEstates) {
+      selEstates = new Set();
+      parts.push(LANG.filter_all);
+    } else if (parsed.estates.length) {
+      selEstates = new Set(parsed.estates);
+      parts.push(parsed.estates.join(', '));
+    }
+    if (parsed.allBlocks) {
+      selBlocks = new Set();
+    } else if (parsed.blocks.length) {
+      selBlocks = new Set(parsed.blocks);
+      parts.push(parsed.blocks.join(', '));
+    } else if (parsed.estates.length || parsed.allEstates) {
+      selBlocks = new Set();
+    }
+    if (parsed.months.length) {
+      monthFrom = parsed.months[0];
+      monthTo   = parsed.months[1];
+      inputFrom.value = monthFrom;
+      inputTo.value   = monthTo;
+      _clearDates();
+      parts.push(monthFrom === monthTo ? monthFrom : (monthFrom + ' → ' + monthTo));
+    }
+
+    if (!parsed.estates.length && !parsed.allEstates && !parsed.blocks.length && !parsed.allBlocks && !parsed.months.length) {
+      feedback.textContent   = LANG.chat_filter_no_match;
+      feedback.className     = 'tf-chat-feedback tf-chat-error';
+      feedback.style.display = 'block';
+      return;
+    }
+
+    updateEstateLabel();
+    updateBlockLabel();
+    applyFilters();
+
+    feedback.textContent   = LANG.chat_filter_applied + parts.join(' · ');
+    feedback.className     = 'tf-chat-feedback tf-chat-ok';
+    feedback.style.display = 'block';
+  }
+
+  document.getElementById('tf-chat-submit').addEventListener('click', applyChatFilter);
+  document.getElementById('tf-chat-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); applyChatFilter(); }
+  });
+
+  // Initial render
+  applyFilters();
+})();
+{% endif %}
+
+// ── Detail panel ─────────────────────────────────────────────────────────────
+async function loadDetail(sessionId) {
+  const panel = document.getElementById('detail-panel');
+  const body  = document.getElementById('detail-body');
+  body.innerHTML = '<div class="dash-empty"><i class="fa-solid fa-spinner fa-spin"></i></div>';
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  try {
+    const res  = await apiFetch(`/api/census-session/${sessionId}`);
+    if (!res) return;
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    document.getElementById('detail-title').textContent =
+      `${LANG.detail_title} — ${data.created_at.slice(0, 16)}`;
+
+    const cols    = data.columns;
+    const records = data.records;
+
+    let info = `<div class="detail-meta">
+      <span><i class="fa-solid fa-folder"></i> ${(data.folder_path || '').split(/[\\/]/).filter(Boolean).pop() || '—'}</span>
+      <span><i class="fa-solid fa-map-location-dot"></i> ${data.block || '—'}</span>
+      <span><i class="fa-regular fa-calendar"></i> ${data.date_from || '—'} → ${data.date_to || '—'}</span>
+    </div>`;
+
+    const DAMAGE_COLS = new Set(['D1', 'D2', 'D3']);
+    let table = `<div class="census-table-scroll"><table class="census-table"><thead><tr>`;
+    cols.forEach(c => {
+      const cls = DAMAGE_COLS.has(c) ? ' class="th-damage"' : '';
+      table += `<th${cls}>${c === 'Baris-Pokok' ? LANG.col_row_tree : c}</th>`;
+    });
+    table += '</tr></thead><tbody>';
+    records.forEach(row => {
+      table += '<tr>';
+      cols.forEach(c => {
+        if (DAMAGE_COLS.has(c)) {
+          const val = row[c] != null ? parseFloat(row[c]).toFixed(2) : '0.00';
+          table += `<td class="td-damage">${val}%</td>`;
+        } else {
+          table += `<td>${row[c] ?? ''}</td>`;
+        }
+      });
+      table += '</tr>';
+    });
+    table += `</tbody></table></div>`;
+    table += `<p class="result-empty-hint" style="margin-top:8px;">${records.length} ${LANG.result_rows}</p>`;
+
+    // ── Ground Truth accuracy analysis ───────────────────────────────────────
+    let gtHtml = '';
+    if (data.gt_records && data.gt_records.length > 0) {
+      const gtMap = {};
+      data.gt_records.forEach(r => {
+        const key = String(r['Baris-Pokok'] ?? '').trim();
+        if (key) gtMap[key] = String(r['Decision'] ?? '').trim();
+      });
+
+      let tp = 0, tn = 0, fp = 0, fn = 0, matched = 0;
+      records.forEach(r => {
+        const key = String(r['Baris-Pokok'] ?? '').trim();
+        const ai  = String(r['Decision'] ?? '').trim();
+        const gt  = gtMap[key];
+        if (!gt || !ai) return;
+        matched++;
+        if (ai === 'Spray'    && gt === 'Spray')    tp++;
+        else if (ai === 'No Spray' && gt === 'No Spray') tn++;
+        else if (ai === 'Spray'    && gt === 'No Spray') fp++;
+        else if (ai === 'No Spray' && gt === 'Spray')    fn++;
+      });
+
+      if (matched > 0) {
+        const acc  = ((tp + tn) / matched * 100).toFixed(1);
+        const prec = (tp + fp) > 0 ? (tp / (tp + fp) * 100).toFixed(1) : '—';
+        const rec  = (tp + fn) > 0 ? (tp / (tp + fn) * 100).toFixed(1) : '—';
+        const f1   = (prec !== '—' && rec !== '—' && (parseFloat(prec) + parseFloat(rec)) > 0)
+          ? (2 * parseFloat(prec) * parseFloat(rec) / (parseFloat(prec) + parseFloat(rec))).toFixed(1)
+          : '—';
+
+        // Confusion matrix rows for display
+        const cmRows = [
+          { label: 'TP (Spray benar)',       val: tp, color: '#3fb950' },
+          { label: 'TN (No Spray benar)',    val: tn, color: '#3fb950' },
+          { label: 'FP (Spray salah)',       val: fp, color: '#f85149' },
+          { label: 'FN (No Spray salah)',    val: fn, color: '#f85149' },
+        ];
+
+        gtHtml = `
+        <div style="margin-top:1.2rem;">
+          <div style="font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            <i class="fa-solid fa-chart-simple" style="color:var(--green2);"></i>
+            ${LANG.detail_gt_analysis}
+            <span style="font-size:.75rem; opacity:.6; font-weight:400;">(${matched} baris dibandingkan)</span>
+          </div>
+          <div class="gt-metrics">
+            <div class="gt-metric-card">
+              <div class="gm-value">${acc}%</div>
+              <div class="gm-label">Accuracy</div>
+            </div>
+            <div class="gt-metric-card">
+              <div class="gm-value">${prec}${prec !== '—' ? '%' : ''}</div>
+              <div class="gm-label">Precision</div>
+            </div>
+            <div class="gt-metric-card">
+              <div class="gm-value">${rec}${rec !== '—' ? '%' : ''}</div>
+              <div class="gm-label">Recall</div>
+            </div>
+            <div class="gt-metric-card">
+              <div class="gm-value">${f1}${f1 !== '—' ? '%' : ''}</div>
+              <div class="gm-label">F1-Score</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:.8rem; margin-top:4px;">
+            ${cmRows.map(r => `<span style="color:${r.color}; background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:3px 10px;">${r.label}: <strong>${r.val}</strong></span>`).join('')}
+          </div>
+        </div>`;
+      }
+    }
+
+    body.innerHTML = info + gtHtml + table;
+  } catch (err) {
+    body.innerHTML = `<p class="result-empty-hint" style="padding:1rem;">${LANG.toast_server_error}${err.message}</p>`;
+  }
+}
+
+document.getElementById('btn-close-detail').addEventListener('click', () => {
+  document.getElementById('detail-panel').style.display = 'none';
+});
+
+// ── Table actions ────────────────────────────────────────────────────────────
+document.querySelectorAll('.btn-tbl-detail').forEach(btn => {
+  btn.addEventListener('click', () => loadDetail(btn.dataset.id));
+});
+
+document.querySelectorAll('.btn-tbl-download').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    try {
+      const res  = await apiFetch(`/api/census-session/${btn.dataset.id}`);
+      if (!res) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      const exportRes = await fetch(`/${PEST_KEY}/census/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columns: data.columns, records: data.records }),
+      });
+      if (!exportRes.ok) throw new Error((await exportRes.json()).error);
+
+      const blob = await exportRes.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `census_${btn.dataset.id}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast(LANG.toast_server_error + err.message, 'error');
+    }
+  });
+});
+
+// ── Report generator ─────────────────────────────────────────────────────────
+const SESSION_META = [
+  {% for s in sessions %}
+  { estate: {{ (s.estate or '') | tojson }}, block: {{ (s.block or '') | tojson }} },
+  {% endfor %}
+];
+
+// ── Generic multi-select helper ───────────────────────────────────────────────
+function MultiSelect({ toggleBtn, labelEl, dropdown, getItems, onChange }) {
+  let open = false;
+  const selected = new Set();
+
+  function updateLabel() {
+    labelEl.textContent = selected.size
+      ? [...selected].join(', ')
+      : labelEl.dataset.placeholder;
+  }
+
+  function buildItems(items) {
+    dropdown.innerHTML = '';
+    if (!items.length) {
+      dropdown.innerHTML = '<span class="ms-empty">—</span>';
+      return;
+    }
+    items.forEach(val => {
+      const lbl = document.createElement('label');
+      lbl.className = 'ms-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = val;
+      cb.checked = selected.has(val);
+      cb.addEventListener('change', () => {
+        cb.checked ? selected.add(val) : selected.delete(val);
+        updateLabel();
+        onChange([...selected]);
+      });
+      lbl.appendChild(cb);
+      lbl.append(' ' + val);
+      dropdown.appendChild(lbl);
+    });
+  }
+
+  toggleBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    open = !open;
+    dropdown.classList.toggle('ms-open', open);
+    toggleBtn.querySelector('.ms-chevron').style.transform = open ? 'rotate(180deg)' : '';
+    if (open) buildItems(getItems());
+  });
+
+  document.addEventListener('click', e => {
+    if (!dropdown.parentElement.contains(e.target)) {
+      open = false;
+      dropdown.classList.remove('ms-open');
+      toggleBtn.querySelector('.ms-chevron').style.transform = '';
+    }
+  });
+
+  labelEl.dataset.placeholder = labelEl.textContent;
+  return { getSelected: () => [...selected], setItems: buildItems };
+}
+
+// Estate multi-select
+const estateMS = MultiSelect({
+  toggleBtn: document.getElementById('ms-estate-toggle'),
+  labelEl:   document.getElementById('ms-estate-label'),
+  dropdown:  document.getElementById('ms-estate-dropdown'),
+  getItems:  () => [...new Set(SESSION_META.map(s => s.estate).filter(Boolean))].sort(),
+  onChange:  () => { if (blockMS) rebuildBlocks(); },
+});
+
+// Block multi-select (items depend on selected estates)
+function getBlockItems() {
+  const selEstates = estateMS.getSelected();
+  return [...new Set(
+    SESSION_META
+      .filter(s => !selEstates.length || selEstates.includes(s.estate))
+      .map(s => s.block)
+      .filter(Boolean)
+  )].sort();
+}
+
+function rebuildBlocks() {
+  blockMS.setItems(getBlockItems());
+}
+
+// Initialise blocks dropdown items on first open
+const blockMS = MultiSelect({
+  toggleBtn: document.getElementById('ms-block-toggle'),
+  labelEl:   document.getElementById('ms-block-label'),
+  dropdown:  document.getElementById('ms-block-dropdown'),
+  getItems:  getBlockItems,
+  onChange:  () => {},
+});
+
+// Init block dropdown content immediately
+document.getElementById('ms-block-dropdown').innerHTML = '';
+
+// ── Generate report ───────────────────────────────────────────────────────────
+document.getElementById('btn-generate-report').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-generate-report');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+  try {
+    const payload = {
+      estates:   estateMS.getSelected(),
+      blocks:    blockMS.getSelected(),
+      date_from: document.getElementById('rpt-date-from').value,
+      date_to:   document.getElementById('rpt-date-to').value,
+    };
+    const res = await fetch(`/${PEST_KEY}/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const ct = res.headers.get('Content-Type') || '';
+      if (ct.includes('application/json')) {
+        const err = await res.json();
+        throw new Error(err.error || 'Unknown error');
+      } else {
+        const txt = await res.text();
+        // strip HTML tags for a readable message
+        const plain = txt.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+        throw new Error(plain || `HTTP ${res.status}`);
+      }
+    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    const cd   = res.headers.get('Content-Disposition') || '';
+    const m    = cd.match(/filename[^;=\n]*=([^;\n]*)/);
+    a.download = m ? m[1].replace(/['"]/g, '') : `report.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast(LANG.toast_report_error + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-file-excel"></i> ' + {{ t('btn_report') | tojson }};
+  }
+});
+
+
+document.querySelectorAll('.btn-tbl-delete').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!confirm(LANG.confirm_delete)) return;
+    try {
+      const res = await apiFetch(`/api/census-session/${btn.dataset.id}`, { method: 'DELETE' });
+      if (!res) return;
+      if (!res.ok) throw new Error((await res.json()).error);
+      showToast(LANG.toast_deleted, 'success');
+      setTimeout(() => location.reload(), 800);
+    } catch (err) {
+      showToast(LANG.toast_server_error + err.message, 'error');
+    }
+  });
+});
+
+// ── History table toggle + filter ─────────────────────────────────────────────
+(function () {
+  const toggleBtn  = document.getElementById('btn-history-toggle');
+  const toggleIcon = document.getElementById('history-toggle-icon');
+  const toggleLbl  = document.getElementById('history-toggle-label');
+  const filterBar  = document.getElementById('history-filter-bar');
+  const tableWrap  = document.getElementById('history-table-wrap');
+  if (!toggleBtn) return;
+
+  let visible = false;
+  toggleBtn.addEventListener('click', () => {
+    visible = !visible;
+    tableWrap.style.display  = visible ? 'block' : 'none';
+    filterBar.style.display  = visible ? 'flex'  : 'none';
+    toggleIcon.className     = visible ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+    toggleLbl.textContent    = visible ? 'Sembunyikan' : 'Tampilkan';
+  });
+
+  function filterTable() {
+    const estVal = (document.getElementById('hist-estate-filter').value || '').toLowerCase();
+    const blkVal = (document.getElementById('hist-block-filter').value  || '').toLowerCase();
+    document.querySelectorAll('#history-table tbody tr').forEach(tr => {
+      const estate = (tr.dataset.estate || '').toLowerCase();
+      const block  = (tr.dataset.block  || '').toLowerCase();
+      const show   = (!estVal || estate === estVal) && (!blkVal || block === blkVal);
+      tr.style.display = show ? '' : 'none';
+    });
+  }
+
+  const estSel = document.getElementById('hist-estate-filter');
+  const blkSel = document.getElementById('hist-block-filter');
+  if (estSel) estSel.addEventListener('change', filterTable);
+  if (blkSel) blkSel.addEventListener('change', filterTable);
+})();
+
+{% block extra_monitoring_scripts %}{% endblock %}
+</script>
+{% endblock %}

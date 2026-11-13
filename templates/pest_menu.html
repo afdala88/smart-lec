@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ pest.name }}{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+  <a href="/"><i class="fa-solid fa-house"></i></a>
+  <i class="fa-solid fa-chevron-right"></i>
+  <span>{{ pest.name }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="--accent: {{ pest.color }};">
+  <div class="page-header-icon" style="background: linear-gradient(135deg, {{ pest.color }}, {{ pest.color }}99);">
+    <img src="/static/{{ pest.img }}" alt="{{ pest.name }}" class="pest-img">
+  </div>
+  <div>
+    <h1>{{ pest.name }}</h1>
+    <p class="page-subtitle"><em>{{ pest.scientific }}</em> &mdash; {{ t('pest_' + pest_key + '_desc') }}</p>
+  </div>
+</div>
+
+<section class="section">
+  <div class="section-header">
+    <h2>{{ t('select_module') }}</h2>
+    <p>{{ t('select_module_sub') }}</p>
+  </div>
+
+  <div class="module-grid">
+    <!-- Census -->
+    <a href="/{{ pest_key }}/census" class="module-card module-census">
+      <div class="module-card-inner">
+        <div class="module-icon">
+          <i class="fa-solid fa-clipboard-list"></i>
+        </div>
+        <div class="module-body">
+          <h3>Census</h3>
+          <p>{{ t('census_module_desc').replace('{name}', pest.name) }}</p>
+        </div>
+        <ul class="module-features">
+          <li><i class="fa-solid fa-check"></i> {{ t('census_feat_1') }}</li>
+          <li><i class="fa-solid fa-check"></i> {{ t('census_feat_2') }}</li>
+          <li><i class="fa-solid fa-check"></i> {{ t('census_feat_3') }}</li>
+        </ul>
+        <div class="module-cta">
+          {{ t('census_cta') }} <i class="fa-solid fa-arrow-right"></i>
+        </div>
+      </div>
+    </a>
+
+    <!-- Monitoring -->
+    <a href="/{{ pest_key }}/monitoring" class="module-card module-monitoring">
+      <div class="module-card-inner">
+        <div class="module-icon">
+          <i class="fa-solid fa-chart-line"></i>
+        </div>
+        <div class="module-body">
+          <h3>{{ t('monitoring_cta') }}</h3>
+          <p>{{ t('monitoring_module_desc').replace('{name}', pest.name) }}</p>
+        </div>
+        <ul class="module-features">
+          <li><i class="fa-solid fa-check"></i> {{ t('monitoring_feat_1') }}</li>
+          <li><i class="fa-solid fa-check"></i> {{ t('monitoring_feat_2') }}</li>
+          <li><i class="fa-solid fa-check"></i> {{ t('monitoring_feat_3') }}</li>
+        </ul>
+        <div class="module-cta">
+          {{ t('monitoring_cta') }} <i class="fa-solid fa-arrow-right"></i>
+        </div>
+      </div>
+    </a>
+  </div>
+</section>
+{% endblock %}

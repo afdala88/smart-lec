@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}SMARTRI{% endblock %} | {{ t('page_title_suffix') }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <a href="/" class="navbar-brand">
+      <img src="{{ url_for('static', filename='logo_smartri.png') }}" alt="SMARTRI" style="height:56px;width:auto;object-fit:contain;">
+    </a>
+    <div class="navbar-right">
+      <div class="navbar-links">
+        <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
+          <i class="fa-solid fa-house"></i> {{ t('nav_home') }}
+        </a>
+      </div>
+      <div class="lang-switcher">
+        <a href="/set-lang/en"  class="lang-btn {% if lang == 'en' %}active{% endif %}">EN</a>
+        <a href="/set-lang/id"  class="lang-btn {% if lang == 'id' %}active{% endif %}">ID</a>
+        <a href="/set-lang/zh"  class="lang-btn {% if lang == 'zh' %}active{% endif %}">中文</a>
+      </div>
+      {% if session.get('user_nama') %}
+      <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;color:var(--text2);">
+        <i class="fa-solid fa-circle-user" style="color:var(--green)"></i>
+        <span>{{ session.get('user_nama') }}</span>
+        <a href="{{ url_for('logout') }}" style="color:var(--text3);margin-left:0.3rem;" title="Logout">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </nav>
+
+  <!-- Breadcrumb -->
+  {% block breadcrumb %}{% endblock %}
+
+  <!-- Main content -->
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>&copy; 2026 SMARTRI &mdash; {{ t('footer') }}</p>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+
+  {% if session.get('user_id') %}
+  {# ── Chatbot Bagworm Census — connected to bagworm-agent AI ── #}
+  <div id="complaint-chat-widget">
+    <button type="button" id="complaint-chat-toggle" title="Chatbot Bagworm Census">
+      <i class="fa-solid fa-comment-dots"></i>
+    </button>
+
+    <div id="complaint-chat-panel" style="display:none;">
+      <div id="complaint-chat-header">
+        <span><i class="fa-solid fa-headset"></i> Chatbot Bagworm Census</span>
+        <button type="button" id="complaint-chat-close" title="Tutup">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div id="complaint-chat-messages">
+        <div class="complaint-chat-msg complaint-chat-msg--bot">
+          Halo! Tanya saya soal data sensus bagworm — contoh: "berapa total sesi sensus di estate NMAE?" atau "blok mana yang perlu disemprot?"
+        </div>
+      </div>
+      <div id="complaint-chat-input-row">
+        <input type="text" id="complaint-chat-input" placeholder="Tulis pesan...">
+        <button type="button" id="complaint-chat-send">
+          <i class="fa-solid fa-paper-plane"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <style>
+    #complaint-chat-widget { position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 999; }
+
+    #complaint-chat-toggle {
+      width: 52px; height: 52px; border-radius: 50%; border: none;
+      background: linear-gradient(135deg, #3fb950, #58a6ff);
+      color: #fff; font-size: 1.3rem; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.15s ease;
+    }
+    #complaint-chat-toggle:hover { transform: scale(1.06); }
+
+    #complaint-chat-panel {
+      position: absolute; right: 0; bottom: 64px;
+      width: 280px; max-width: calc(100vw - 3rem);
+      background: var(--bg2, #161b22); border: 1px solid var(--border, #30363d);
+      border-radius: 12px; overflow: hidden;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+      display: flex; flex-direction: column;
+    }
+
+    #complaint-chat-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.7rem 0.9rem; font-size: 0.85rem; font-weight: 600;
+      color: var(--text, #e6edf3); background: var(--bg3, #21262d);
+      border-bottom: 1px solid var(--border, #30363d);
+    }
+    #complaint-chat-header i { margin-right: 6px; }
+    #complaint-chat-close {
+      background: none; border: none; color: var(--text2, #8b949e);
+      cursor: pointer; font-size: 0.9rem; padding: 2px;
+    }
+    #complaint-chat-close:hover { color: var(--text, #e6edf3); }
+
+    #complaint-chat-messages {
+      padding: 0.75rem; min-height: 120px; max-height: 220px; overflow-y: auto;
+      font-size: 0.8rem; color: var(--text2, #8b949e);
+    }
+    .complaint-chat-msg {
+      margin-bottom: 0.5rem; border-radius: 8px;
+      padding: 0.5rem 0.7rem; line-height: 1.5; white-space: pre-wrap;
+    }
+    .complaint-chat-msg--bot {
+      background: var(--bg3, #21262d);
+    }
+    .complaint-chat-msg--user {
+      background: #1f6feb; color: #fff; margin-left: 1.5rem;
+    }
+
+    #complaint-chat-input-row {
+      display: flex; gap: 0.4rem; padding: 0.6rem;
+      border-top: 1px solid var(--border, #30363d);
+    }
+    #complaint-chat-input {
+      flex: 1; background: var(--bg3, #21262d); border: 1px solid var(--border, #30363d);
+      border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 0.8rem;
+      color: var(--text, #e6edf3);
+    }
+    #complaint-chat-input:disabled { opacity: 0.5; cursor: not-allowed; }
+    #complaint-chat-send {
+      background: var(--bg3, #21262d); border: 1px solid var(--border, #30363d);
+      border-radius: 8px; width: 34px; color: var(--text2, #8b949e);
+      cursor: not-allowed; opacity: 0.5;
+    }
+  </style>
+
+  <script>
+    (function () {
+      const toggleBtn = document.getElementById('complaint-chat-toggle');
+      if (!toggleBtn) return; // widget only renders for logged-in users
+
+      const closeBtn   = document.getElementById('complaint-chat-close');
+      const panel      = document.getElementById('complaint-chat-panel');
+      const messagesEl = document.getElementById('complaint-chat-messages');
+      const inputEl    = document.getElementById('complaint-chat-input');
+      const sendBtn    = document.getElementById('complaint-chat-send');
+
+      toggleBtn.addEventListener('click', () => {
+        panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+      });
+      closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+
+      function addMessage(text, who) {
+        const div = document.createElement('div');
+        div.className = 'complaint-chat-msg complaint-chat-msg--' + who;
+        div.textContent = text;
+        messagesEl.appendChild(div);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      async function sendMessage() {
+        const text = inputEl.value.trim();
+        if (!text) return;
+
+        addMessage(text, 'user');
+        inputEl.value = '';
+        inputEl.disabled = true;
+        sendBtn.disabled = true;
+
+        const thinkingEl = document.createElement('div');
+        thinkingEl.className = 'complaint-chat-msg complaint-chat-msg--bot';
+        thinkingEl.textContent = 'Mengetik...';
+        messagesEl.appendChild(thinkingEl);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+
+        try {
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text }),
+          });
+          const data = await res.json();
+          thinkingEl.textContent = res.ok ? data.reply : ('Error: ' + (data.error || 'Gagal menghubungi agent.'));
+        } catch (err) {
+          thinkingEl.textContent = 'Error: tidak bisa menghubungi server.';
+        } finally {
+          inputEl.disabled = false;
+          sendBtn.disabled = false;
+          inputEl.focus();
+        }
+      }
+
+      sendBtn.addEventListener('click', sendMessage);
+      inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') sendMessage();
+      });
+    })();
+  </script>
+</body>
+</html>
