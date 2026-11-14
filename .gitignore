@@ -18,8 +18,9 @@ temp_suport/
 yolov5_inf/_job_*/
 *.log
 
-# --- Training leftovers (only best.pt of the models in use is shipped) ---
-**/weights/last.pt
+# --- Model weights (never pushed; copy to the VM with scp) ---
+*.pt
+*.pth
 yolov5_inf/model_fix/det_yv5/v1/
 events.out.tfevents.*
 
@@ -34,3 +35,25 @@ __pycache__/
 .idea/
 Thumbs.db
 desktop.ini
+
+# --- Training artefacts not read by the app ---
+yolov5_inf/model_fix/**/train_batch*.jpg
+yolov5_inf/model_fix/**/val_batch*.jpg
+yolov5_inf/model_fix/**/labels_correlogram.jpg
+yolov5_inf/model_fix/ujung-tengah/**/*.jpg
+yolov5_inf/model_fix/bag-dam/
+yolov5_inf/model_fix/leaf_yv8/*
+runs/
+yolov5_inf/runs/
+*.onnx
+*.zip
+*.rar
+
+# --- Virtual environments ---
+venv/
+.venv/
+env/
+
+# --- OS / misc ---
+.DS_Store
+*.tmp

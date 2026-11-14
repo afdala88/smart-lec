@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 import pandas as pd
 from core.pests import BASE_DIR
 
@@ -28,9 +29,10 @@ def calculate_decision(df: pd.DataFrame, tahun_tanam: int) -> pd.DataFrame:
 
     Per-row indicators (K=AI, L=Dm):
       AI  = 1 if mean(F1,F2,F3) >= 2
-      Dm  = 1 if at least 2 of (D1,D2,D3) >= dm_threshold  [tahun_tanam <= 2022]
+      umur = tahun sekarang - tahun_tanam
+      Dm  = 1 if at least 2 of (D1,D2,D3) >= dm_threshold  [umur >= 4 tahun]
             dm_threshold = 1.55
-          = 1 if at least 1 of (D1,D2,D3) >= dm_threshold  [tahun_tanam >= 2023]
+          = 1 if at least 1 of (D1,D2,D3) >= dm_threshold  [umur <  4 tahun]
             dm_threshold = 0.40
 
     Global N_avg = mean of all per-row mean(F1,F2,F3):
@@ -52,7 +54,8 @@ def calculate_decision(df: pd.DataFrame, tahun_tanam: int) -> pd.DataFrame:
     n_avg = per_row_avg.mean()
 
     ai = (per_row_avg >= 2).astype(int)
-    if tahun_tanam >= 2023:
+    umur = datetime.now().year - int(tahun_tanam)
+    if umur < 4:
         dm_threshold = 0.40
         dm = (df[d_cols].apply(lambda row: (row >= dm_threshold).sum(), axis=1) >= 1).astype(int)
     else:
