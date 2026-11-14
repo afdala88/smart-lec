@@ -14,10 +14,16 @@ D3 = average wet-damage % across all images in frond F3
 HSV thresholds match damage.ipynb exactly.
 """
 import os
+import pathlib
 import cv2
 import numpy as np
 import pandas as pd
 import threading
+
+# The leaf model was trained on Windows; its checkpoint pickles pathlib.WindowsPath,
+# which cannot be instantiated on Linux.
+if os.name != 'nt':
+    pathlib.WindowsPath = pathlib.PosixPath
 
 _LEAF_MODEL_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),

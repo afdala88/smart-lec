@@ -3,12 +3,19 @@
 Experimental modules
 """
 import math
+import os
+import pathlib
 
 import numpy as np
 import torch
 import torch.nn as nn
 
 from utils.downloads import attempt_download
+
+# Checkpoints trained on Windows pickle pathlib.WindowsPath objects, which cannot be
+# instantiated on Linux ("cannot instantiate 'WindowsPath' on your system").
+if os.name != 'nt':
+    pathlib.WindowsPath = pathlib.PosixPath
 
 
 class Sum(nn.Module):
