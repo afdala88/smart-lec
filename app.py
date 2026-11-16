@@ -467,6 +467,32 @@ def api_session_delete(session_id):
     return jsonify({'ok': True})
 
 
+@app.route('/api/census-sessions/delete', methods=['POST'])
+@login_required
+def api_sessions_bulk_delete():
+    """Delete several sessions at once. Body: {"ids": [1, 2, ...]}.
+    Same ownership rule as the single delete; sessions not allowed are skipped."""
+    ids = (request.get_json(silent=True) or {}).get('ids') or []
+    try:
+        ids = sorted({int(i) for i in ids})
+    except (TypeError, ValueError):
+        return jsonify({'error': 'ids tidak valid'}), 400
+    if not ids:
+        return jsonify({'error': 'Tidak ada data yang dipilih'}), 400
+
+    is_admin = bool(session.get('is_admin')) or session.get('user_id') in DEV_USER_IDS
+    deleted, skipped = [], []
+    for sid in ids:
+        brief = db.get_session_brief(sid)
+        if db.delete_session(sid, session.get('user_id'), is_admin=is_admin):
+            deleted.append(sid)
+            if brief and brief.get('gcal_event_id'):
+                gcal_reminder.delete_event(brief['gcal_event_id'])
+        else:
+            skipped.append(sid)
+    return jsonify({'ok': True, 'deleted': deleted, 'skipped': skipped})
+
+
 # ── Develop APIs ────────────────────────────────────────────────────────────────
 @app.route('/api/develop/chart-image')
 @login_required
@@ -648,8 +674,14 @@ def api_outbreak():
             for rn in unique_rows
         ]
 
+        peng_aktif, peng_hari = db.pengendalian_status(
+            s.get('tanggal_pengendalian'), s.get('date_from'), s.get('created_at'))
+
         result.append({
             'id':             s['id'],
+            'tanggal_pengendalian': s.get('tanggal_pengendalian') or '',
+            'pengendalian_aktif':   peng_aktif,
+            'pengendalian_hari':    peng_hari,
             'estate':         s.get('estate',    ''),
             'block':          s.get('block',     ''),
             'date_from':      s.get('date_from', ''),
@@ -934,6 +966,11 @@ def census_export():
 @login_required
 def monitoring():
     sessions = db.get_sessions(PEST_KEY, None)
+    acc_map  = db.get_session_accuracies(PEST_KEY)
+    for s in sessions:
+        a = acc_map.get(s['id']) or {}
+        s['gt_accuracy'] = round(a['accuracy'] * 100, 1) if a.get('accuracy') is not None else None
+        s['gt_compared'] = a.get('total', 0)
     trend    = db.get_trend(PEST_KEY, None)
     return render_template(
         'bagworm/monitoring.html',

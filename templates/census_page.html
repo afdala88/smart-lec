@@ -74,57 +74,8 @@
       </div>
       {% endif %}
 
-      <div class="form-group">
-        <label class="form-label">
-          <i class="fa-solid fa-calendar"></i> {{ t('census_period') }}
-        </label>
-        <div class="date-row">
-          <div class="date-field">
-            <label class="date-label">{{ t('date_from') }}</label>
-            <input type="date" id="date-from" class="form-input" />
-          </div>
-          <div class="date-field">
-            <label class="date-label">{{ t('date_to') }}</label>
-            <input type="date" id="date-to" class="form-input" />
-          </div>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">
-          <i class="fa-solid fa-building"></i> {{ t('label_estate') }}
-        </label>
-        <select id="estate-name" class="form-input">
-          <option value="">— {{ t('estate_placeholder') }} —</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">
-          <i class="fa-solid fa-map-location-dot"></i> {{ t('label_divisi') }}
-        </label>
-        <input
-          type="text"
-          id="divisi-name"
-          class="form-input"
-          placeholder="{{ t('divisi_placeholder') }}"
-        />
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">
-          <i class="fa-solid fa-border-all"></i> {{ t('block_division') }}
-        </label>
-        <select id="block-name" class="form-input" disabled>
-          <option value="">— {{ t('block_placeholder') }} —</option>
-        </select>
-        <input type="hidden" id="tahun-tanam" value="" />
-      </div>
-
-      {% block extra_form %}{% endblock %}
-
       <!-- Ground Truth Upload -->
-      <div class="form-group" style="margin-top:0.5rem;">
+      <div class="form-group">
         <label class="form-label">
           <i class="fa-solid fa-file-circle-check"></i> Ground Truth
           <span style="font-weight:400; opacity:.7; font-size:.8em;">(opsional)</span>
@@ -140,6 +91,46 @@
           </button>
         </div>
         <p class="form-hint">File Excel dengan format sama seperti hasil sensus (kolom Baris-Pokok, F1-F3, D1-D3, Decision)</p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">
+          <i class="fa-solid fa-calendar"></i> {{ t('census_date') }}
+        </label>
+        <input type="date" id="census-date" class="form-input" />
+      </div>
+
+      {% block extra_form %}{% endblock %}
+
+      <div class="form-group">
+        <label class="form-label">
+          <i class="fa-solid fa-building"></i> {{ t('label_estate') }}
+        </label>
+        <select id="estate-name" class="form-input">
+          <option value="">— {{ t('estate_placeholder') }} —</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">
+          <i class="fa-solid fa-border-all"></i> {{ t('block_division') }}
+        </label>
+        <select id="block-name" class="form-input" disabled>
+          <option value="">— {{ t('block_placeholder') }} —</option>
+        </select>
+        <input type="hidden" id="tahun-tanam" value="" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">
+          <i class="fa-solid fa-map-location-dot"></i> {{ t('label_divisi') }}
+        </label>
+        <input
+          type="text"
+          id="divisi-name"
+          class="form-input"
+          placeholder="{{ t('divisi_placeholder') }}"
+        />
       </div>
 
       <button class="btn-generate" id="btn-generate">
@@ -522,8 +513,9 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...source,
-        date_from:    document.getElementById('date-from').value,
-        date_to:      document.getElementById('date-to').value,
+        // single census date; the backend still stores a from/to pair
+        date_from:    document.getElementById('census-date').value,
+        date_to:      document.getElementById('census-date').value,
         estate:       document.getElementById('estate-name').value,
         divisi:       document.getElementById('divisi-name').value,
         block:        document.getElementById('block-name').value,
@@ -584,8 +576,7 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   document.getElementById('photo-folder-input').value   = '';
   document.getElementById('photo-folder-summary').value = '';
   document.getElementById('upload-progress').style.display = 'none';
-  document.getElementById('date-from').value    = '';
-  document.getElementById('date-to').value      = '';
+  document.getElementById('census-date').value  = '';
   document.getElementById('estate-name').value  = '';
   document.getElementById('divisi-name').value  = '';
   const blockSel = document.getElementById('block-name');

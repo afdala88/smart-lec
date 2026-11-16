@@ -83,8 +83,8 @@ def attempt_load(weights, device=None, inplace=True, fuse=True):
 
     model = Ensemble()
     for w in weights if isinstance(weights, list) else [weights]:
-        # weights_only=False: PyTorch >= 2.6 defaults to True and rejects YOLOv5 checkpoints (own trained models)
-        ckpt = torch.load(attempt_download(w), map_location='cpu', weights_only=False)  # load
+        from utils.general import torch_load  # works on old and new PyTorch (weights_only)
+        ckpt = torch_load(attempt_download(w), map_location='cpu')  # load
         ckpt = (ckpt.get('ema') or ckpt['model']).to(device).float()  # FP32 model
 
         # Model compatibility updates

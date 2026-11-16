@@ -156,7 +156,7 @@ def init_db():
                 pass
         # Backfill not_confidence for sessions where it's NULL
         rows_nc = con.execute(
-            "SELECT id, pest, user_id, estate, block, created_at, tanggal_pengendalian "
+            "SELECT id, pest, user_id, estate, block, created_at, tanggal_pengendalian, date_from "
             "FROM census_sessions WHERE not_confidence IS NULL ORDER BY created_at ASC"
         ).fetchall()
         for row in rows_nc:
@@ -164,7 +164,7 @@ def init_db():
                 nc = _compute_nc_flag(
                     con, row['pest'], row['user_id'],
                     row['estate'] or '', row['block'] or '',
-                    row['created_at'], row['tanggal_pengendalian'],
+                    row['created_at'], row['tanggal_pengendalian'], row['date_from'],
                 )
                 con.execute('UPDATE census_sessions SET not_confidence=? WHERE id=?', (nc, row['id']))
             except Exception:
@@ -172,10 +172,34 @@ def init_db():
         con.commit()
 
 
+# ── Pengendalian (prior control) ───────────────────────────────────────────────
+PENGENDALIAN_MAX_DAYS = 14
+
+
+def pengendalian_status(tanggal_pengendalian, census_date=None, created_at=None):
+    """Return (aktif, hari) for a session's tanggal pengendalian.
+
+    hari  = census date - tanggal pengendalian, in days. The census date is the
+            date the user entered (date_from); created_at is the fallback.
+    aktif = True only when 0 <= hari <= PENGENDALIAN_MAX_DAYS. A control older
+            than that (or dated after the census) counts as no control at all.
+    """
+    tp = (tanggal_pengendalian or '').strip()[:10]
+    ref = (census_date or '').strip()[:10] or (created_at or '').strip()[:10]
+    if not tp or not ref:
+        return False, None
+    try:
+        hari = (datetime.strptime(ref, '%Y-%m-%d') - datetime.strptime(tp, '%Y-%m-%d')).days
+    except ValueError:
+        return False, None
+    return 0 <= hari <= PENGENDALIAN_MAX_DAYS, hari
+
+
 # ── Need-to-Visit flag ─────────────────────────────────────────────────────────
 
-def _compute_nc_flag(con, pest, user_id, estate, block, created_at, tanggal_pengendalian):
-    if tanggal_pengendalian:
+def _compute_nc_flag(con, pest, user_id, estate, block, created_at, tanggal_pengendalian,
+                     census_date=None):
+    if pengendalian_status(tanggal_pengendalian, census_date, created_at)[0]:
         return 0
     if not estate or not block:
         return 0
@@ -452,7 +476,7 @@ def save_census(pest, folder_path, date_from, date_to, block, job_id, columns, r
 
     with _conn() as con:
         nc_flag = _compute_nc_flag(
-            con, pest, user_id, estate or '', block or '', created_at, tanggal_pengendalian
+            con, pest, user_id, estate or '', block or '', created_at, tanggal_pengendalian, date_from
         )
         cur = con.execute('''
             INSERT INTO census_sessions
@@ -589,12 +613,13 @@ def get_gt_scatter(pest, user_id=None, estates=None, blocks=None, date_from=None
 
     x = avg(F1, F2, F3) from AI result  [chart swaps: displayed as Y]
     y = value among (M1, M2, M3) closest to avg(F1,F2,F3)  [chart swaps: displayed as X]
-        — if the session has tanggal_pengendalian filled, y = max(M1, M2, M3) instead
+        — if the session has an active pengendalian (<= 14 days before the census,
+          see pengendalian_status), y = max(M1, M2, M3) instead
     d = Decision ('Spray' | 'No Spray')
     bp = Baris-Pokok label
     user_id=None aggregates points across all users.
     """
-    query  = f'''SELECT records, gt_records, tanggal_pengendalian FROM census_sessions
+    query  = f'''SELECT records, gt_records, tanggal_pengendalian, date_from, created_at FROM census_sessions
                 WHERE  pest = ?
                   AND  gt_records IS NOT NULL AND gt_records != '[]'
                   AND  {_NC_EXCLUDE}'''
@@ -637,8 +662,8 @@ def get_gt_scatter(pest, user_id=None, estates=None, blocks=None, date_from=None
         if not records or not gt_records:
             continue
 
-        # Session with prior control (tanggal pengendalian filled) -> GT = max(M1..M3)
-        use_max = bool((row['tanggal_pengendalian'] or '').strip())
+        # Active prior control (<= 14 days before the census) -> GT = max(M1..M3)
+        use_max = pengendalian_status(row['tanggal_pengendalian'], row['date_from'], row['created_at'])[0]
 
         # Build GT map: Baris-Pokok -> list of M values
         gt_map = {}
@@ -741,13 +766,107 @@ def _optimized_decisions(records):
     return flipped
 
 
+def _session_cm_counts(row, count_only=False, optimize=False):
+    """[tp, tn, fp, fn] of one session row (needs records, gt_records,
+    tanggal_pengendalian, date_from, created_at). Pairing rules: see get_confusion_matrix."""
+    cnt = [0, 0, 0, 0]
+    try:
+        records    = json.loads(row['records']    or '[]')
+        gt_records = json.loads(row['gt_records'] or '[]')
+    except Exception:
+        return cnt
+    if not records or not gt_records:
+        return cnt
+
+    def _avg(rec, cols):
+        vals = []
+        for c in cols:
+            try:
+                v = rec.get(c)
+                if v is not None:
+                    vals.append(float(v))
+            except (TypeError, ValueError):
+                pass
+        return sum(vals) / len(vals) if vals else None
+
+    gt_map = {}
+    for r in gt_records:
+        bp = str(r.get('Baris-Pokok', '') or '').strip()
+        if not bp:
+            continue
+        vals = []
+        for c in ['M1', 'M2', 'M3']:
+            try:
+                v = r.get(c)
+                if v is not None:
+                    vals.append(float(v))
+            except (TypeError, ValueError):
+                pass
+        if vals:
+            gt_map[bp] = vals
+
+    # Active prior control (<= 14 days before the census) -> GT = max(M1..M3),
+    # same rule as get_gt_scatter
+    use_max = pengendalian_status(row['tanggal_pengendalian'], row['date_from'], row['created_at'])[0]
+
+    flipped = _optimized_decisions(records) if optimize else {}
+
+    for r in records:
+        bp = str(r.get('Baris-Pokok', '') or '').strip()
+        if not bp or bp not in gt_map:
+            continue
+        ai_avg = _avg(r, ['F1', 'F2', 'F3'])
+        if ai_avg is None:
+            continue
+
+        if count_only:
+            ai = 'Spray' if ai_avg >= _COUNT_ONLY_THRESHOLD else 'No Spray'
+        else:
+            ai = str(r.get('Decision', '') or '').strip()
+            if not ai:
+                continue
+        ai = flipped.get(bp, ai)
+
+        if use_max:
+            closest_m = max(gt_map[bp])
+        else:
+            closest_m = min(gt_map[bp], key=lambda v: abs(v - ai_avg))
+        gt = 'No Spray' if closest_m < _NO_SPRAY_THRESHOLD else 'Spray'
+
+        if ai == 'Spray'    and gt == 'Spray':    cnt[0] += 1
+        elif ai == 'No Spray' and gt == 'No Spray': cnt[1] += 1
+        elif ai == 'Spray'    and gt == 'No Spray': cnt[2] += 1
+        elif ai == 'No Spray' and gt == 'Spray':    cnt[3] += 1
+    return cnt
+
+
+def get_session_accuracies(pest):
+    """{session_id: {'accuracy': 0..1, 'total': n}} for sessions with GT data,
+    using the full-logic confusion matrix (stored Decision vs GT)."""
+    with _conn() as con:
+        rows = con.execute(
+            '''SELECT id, records, gt_records, tanggal_pengendalian, date_from, created_at
+               FROM census_sessions
+               WHERE pest = ? AND gt_records IS NOT NULL AND gt_records != '[]' ''',
+            (pest,),
+        ).fetchall()
+    out = {}
+    for row in rows:
+        tp, tn, fp, fn = _session_cm_counts(row)
+        total = tp + tn + fp + fn
+        if total:
+            out[row['id']] = {'accuracy': (tp + tn) / total, 'total': total}
+    return out
+
+
 def get_confusion_matrix(pest, user_id=None, estates=None, blocks=None, date_from=None, date_to=None,
                           count_only=False, optimize=False):
     """Return aggregated Spray/No Spray confusion matrix across matching sessions.
 
     Uses the same pairing as the AI-vs-Manual scatter: for each AI record,
     the GT (M1-M3) value closest to the AI average (F1-F3) is picked as the
-    matched manual reading. Actual = 'No Spray' if that manual value is below
+    matched manual reading — or max(M1..M3) when the session has an active
+    pengendalian (<= 14 days before the census). Actual = 'No Spray' if that manual value is below
     _NO_SPRAY_THRESHOLD, else 'Spray'.
 
     Predicted:
@@ -757,7 +876,8 @@ def get_confusion_matrix(pest, user_id=None, estates=None, blocks=None, date_fro
       optimize=True overrides cells flipped by the outbreak optimizer
       (see _optimized_decisions).
     """
-    query  = f'''SELECT estate, block, records, gt_records FROM census_sessions
+    query  = f'''SELECT estate, block, records, gt_records, tanggal_pengendalian, date_from, created_at
+                FROM census_sessions
                 WHERE  pest = ?
                   AND  gt_records IS NOT NULL AND gt_records != '[]'
                   AND  {_NC_EXCLUDE}'''
@@ -779,17 +899,6 @@ def get_confusion_matrix(pest, user_id=None, estates=None, blocks=None, date_fro
     with _conn() as con:
         rows = con.execute(query, params).fetchall()
 
-    def _avg(rec, cols):
-        vals = []
-        for c in cols:
-            try:
-                v = rec.get(c)
-                if v is not None:
-                    vals.append(float(v))
-            except (TypeError, ValueError):
-                pass
-        return sum(vals) / len(vals) if vals else None
-
     def _metrics(tp, tn, fp, fn):
         total     = tp + tn + fp + fn
         precision = tp / (tp + fp) if (tp + fp) else None
@@ -808,55 +917,8 @@ def get_confusion_matrix(pest, user_id=None, estates=None, blocks=None, date_fro
     for row in rows:
         key = (row['estate'] or '', row['block'] or '')
         cnt = per_block.setdefault(key, [0, 0, 0, 0])
-        try:
-            records    = json.loads(row['records']    or '[]')
-            gt_records = json.loads(row['gt_records'] or '[]')
-        except Exception:
-            continue
-        if not records or not gt_records:
-            continue
-
-        gt_map = {}
-        for r in gt_records:
-            bp = str(r.get('Baris-Pokok', '') or '').strip()
-            if not bp:
-                continue
-            vals = []
-            for c in ['M1', 'M2', 'M3']:
-                try:
-                    v = r.get(c)
-                    if v is not None:
-                        vals.append(float(v))
-                except (TypeError, ValueError):
-                    pass
-            if vals:
-                gt_map[bp] = vals
-
-        flipped = _optimized_decisions(records) if optimize else {}
-
-        for r in records:
-            bp = str(r.get('Baris-Pokok', '') or '').strip()
-            if not bp or bp not in gt_map:
-                continue
-            ai_avg = _avg(r, ['F1', 'F2', 'F3'])
-            if ai_avg is None:
-                continue
-
-            if count_only:
-                ai = 'Spray' if ai_avg >= _COUNT_ONLY_THRESHOLD else 'No Spray'
-            else:
-                ai = str(r.get('Decision', '') or '').strip()
-                if not ai:
-                    continue
-            ai = flipped.get(bp, ai)
-
-            closest_m = min(gt_map[bp], key=lambda v: abs(v - ai_avg))
-            gt = 'No Spray' if closest_m < _NO_SPRAY_THRESHOLD else 'Spray'
-
-            if ai == 'Spray'    and gt == 'Spray':    cnt[0] += 1
-            elif ai == 'No Spray' and gt == 'No Spray': cnt[1] += 1
-            elif ai == 'Spray'    and gt == 'No Spray': cnt[2] += 1
-            elif ai == 'No Spray' and gt == 'Spray':    cnt[3] += 1
+        for i, v in enumerate(_session_cm_counts(row, count_only, optimize)):
+            cnt[i] += v
 
     tp, tn, fp, fn = (sum(c[i] for c in per_block.values()) for i in range(4))
     result = _metrics(tp, tn, fp, fn)

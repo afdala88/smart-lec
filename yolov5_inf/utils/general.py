@@ -1016,9 +1016,18 @@ def non_max_suppression(
     return output
 
 
+def torch_load(f, **kwargs):
+    """torch.load for full YOLO checkpoints on any PyTorch version.
+    PyTorch >= 2.6 defaults to weights_only=True (rejects YOLO checkpoints);
+    PyTorch < 1.13 does not know the weights_only argument at all."""
+    if 'weights_only' in inspect.signature(torch.load).parameters:
+        kwargs.setdefault('weights_only', False)
+    return torch.load(f, **kwargs)
+
+
 def strip_optimizer(f='best.pt', s=''):  # from utils.general import *; strip_optimizer()
     # Strip optimizer from 'f' to finalize training, optionally save as 's'
-    x = torch.load(f, map_location=torch.device('cpu'), weights_only=False)
+    x = torch_load(f, map_location=torch.device('cpu'))
     if x.get('ema'):
         x['model'] = x['ema']  # replace model with ema
     for k in 'optimizer', 'best_fitness', 'ema', 'updates':  # keys

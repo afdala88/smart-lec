@@ -327,6 +327,12 @@
           {% for b in blocks %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
         </select>
       </div>
+      {% if sessions %}
+      <button id="btn-bulk-delete" class="btn-action btn-secondary" disabled
+              style="margin-left:auto; align-self:flex-end; padding:6px 14px; font-size:.8rem; color:#f85149; border-color:#f8514966;">
+        <i class="fa-solid fa-trash"></i> Hapus terpilih (<span id="bulk-count">0</span>)
+      </button>
+      {% endif %}
     </div>
 
     <div id="history-table-wrap" style="display:none;">
@@ -335,13 +341,17 @@
       <table class="census-table" id="history-table">
         <thead>
           <tr>
-            <th>{{ t('col_date') }}</th>
+            <th style="width:32px; text-align:center;">
+              <input type="checkbox" id="hist-check-all" title="Pilih semua" style="width:15px; height:15px; cursor:pointer;">
+            </th>
+            <th>{{ t('census_date') }}</th>
             <th>{{ t('label_estate') }}</th>
             <th>{{ t('label_divisi') }}</th>
             <th>{{ t('block_division') }}</th>
             <th>{{ t('col_total') }}</th>
             <th>Size S/M/L</th>
             <th title="{{ t('lbl_ground_truth') }}">GT</th>
+            <th title="Accuracy keputusan AI vs Ground Truth (logika penuh: jumlah + kerusakan)">Accuracy</th>
             <th>Need to Visit</th>
             <th>{{ t('col_actions') }}</th>
           </tr>
@@ -349,7 +359,10 @@
         <tbody>
           {% for s in sessions %}
           <tr data-estate="{{ s.estate or '' }}" data-block="{{ s.block or '' }}">
-            <td style="white-space:nowrap;">{{ s.created_at[:16] }}</td>
+            <td style="text-align:center;">
+              <input type="checkbox" class="hist-check" value="{{ s.id }}" style="width:15px; height:15px; cursor:pointer;">
+            </td>
+            <td style="white-space:nowrap;" title="Diinput: {{ s.created_at[:16] }}">{{ s.date_from or s.created_at[:10] }}</td>
             <td>{{ s.estate or '—' }}</td>
             <td>{{ s.divisi or '—' }}</td>
             <td>{{ s.block or '—' }}</td>
@@ -367,6 +380,14 @@
             <td style="text-align:center;">
               {% if s.has_gt %}
               <span style="color:var(--green2);"><i class="fa-solid fa-circle-check"></i></span>
+              {% else %}
+              <span style="color:var(--text3);">—</span>
+              {% endif %}
+            </td>
+            <td style="text-align:center; white-space:nowrap;">
+              {% if s.gt_accuracy is not none %}
+              {% set acc_color = '#3fb950' if s.gt_accuracy >= 80 else ('#f0c040' if s.gt_accuracy >= 60 else '#f85149') %}
+              <span style="font-weight:600; color:{{ acc_color }};" title="{{ s.gt_compared }} baris dibandingkan">{{ s.gt_accuracy }}%</span>
               {% else %}
               <span style="color:var(--text3);">—</span>
               {% endif %}
@@ -760,14 +781,10 @@ async function apiFetch(url, opts) {
     const pct = (v) => (v === null || v === undefined) ? '—' : (v * 100).toFixed(1) + '%';
 
     contentEl.innerHTML = `
-      <div class="gt-metrics">
+      <div class="gt-metrics" style="justify-content:center;">
         <div class="gt-metric-card">
           <div class="gm-value">${pct(m.accuracy)}</div>
           <div class="gm-label">Accuracy</div>
-        </div>
-        <div class="gt-metric-card">
-          <div class="gm-value">${pct(m.precision)}</div>
-          <div class="gm-label">Precision</div>
         </div>
         <div class="gt-metric-card">
           <div class="gm-value">${pct(m.recall)}</div>
@@ -886,7 +903,15 @@ async function apiFetch(url, opts) {
     container.innerHTML = sessions.map((s, si) => {
       const pct     = s.spray_pct != null ? s.spray_pct.toFixed(1) + '% Spray' : '—';
       const pctCls  = (s.spray_pct || 0) > 50 ? 'ob-badge-spray' : 'ob-badge-nospray';
-      const dateStr = [s.date_from, s.date_to].filter(Boolean).join(' → ');
+      const dateStr = [...new Set([s.date_from, s.date_to].filter(Boolean))].join(' → ');
+
+      // Pengendalian: shown only when counted (<= 14 days before the census date).
+      // The line is always rendered (hidden when empty) so every card keeps the same size.
+      const pengAktif = !!(s.tanggal_pengendalian && s.pengendalian_aktif);
+      const pengInfo = `<div class="ob-card-date" style="color:#58a6ff; white-space:nowrap; visibility:${pengAktif ? 'visible' : 'hidden'};"
+          ${pengAktif ? `title="Pengendalian ${s.tanggal_pengendalian} (${s.pengendalian_hari} hari sebelum sensus)"` : ''}>
+          <i class="fa-solid fa-shield-halved"></i> ${pengAktif ? s.tanggal_pengendalian : '&nbsp;'}
+        </div>`;
 
       // Grid table
       const sizeLbl = { small: 'small-size', medium: 'medium-size', big: 'big-size' }[s.dominant_size] || null;
@@ -919,6 +944,7 @@ async function apiFetch(url, opts) {
             <strong>${s.estate || '—'}</strong>
             <span class="ob-card-block"> · ${s.block || '—'}</span>
             ${dateStr ? `<div class="ob-card-date">${dateStr}</div>` : ''}
+            ${pengInfo}
           </div>
           <div style="text-align:right;">
             <span class="ob-badge ${pctCls}">${pct}</span>
@@ -1867,8 +1893,60 @@ document.querySelectorAll('.btn-tbl-delete').forEach(btn => {
       const block  = (tr.dataset.block  || '').toLowerCase();
       const show   = (!estVal || estate === estVal) && (!blkVal || block === blkVal);
       tr.style.display = show ? '' : 'none';
+      if (!show) { const cb = tr.querySelector('.hist-check'); if (cb) cb.checked = false; }
     });
+    updateBulk();
   }
+
+  // ── Multi-select delete ──
+  const checkAll = document.getElementById('hist-check-all');
+  const bulkBtn  = document.getElementById('btn-bulk-delete');
+  const bulkCnt  = document.getElementById('bulk-count');
+  const visibleChecks = () => [...document.querySelectorAll('#history-table tbody tr')]
+    .filter(tr => tr.style.display !== 'none')
+    .map(tr => tr.querySelector('.hist-check')).filter(Boolean);
+
+  function updateBulk() {
+    if (!bulkBtn) return;
+    const vis = visibleChecks();
+    const n   = vis.filter(cb => cb.checked).length;
+    bulkCnt.textContent = n;
+    bulkBtn.disabled    = n === 0;
+    if (checkAll) {
+      checkAll.checked       = vis.length > 0 && n === vis.length;
+      checkAll.indeterminate = n > 0 && n < vis.length;
+    }
+  }
+
+  if (checkAll) checkAll.addEventListener('change', () => {
+    visibleChecks().forEach(cb => { cb.checked = checkAll.checked; });
+    updateBulk();
+  });
+  document.querySelectorAll('.hist-check').forEach(cb => cb.addEventListener('change', updateBulk));
+
+  if (bulkBtn) bulkBtn.addEventListener('click', async () => {
+    const ids = visibleChecks().filter(cb => cb.checked).map(cb => Number(cb.value));
+    if (!ids.length) return;
+    if (!confirm(`Hapus ${ids.length} data census terpilih? Data yang dihapus tidak bisa dikembalikan.`)) return;
+    bulkBtn.disabled = true;
+    try {
+      const res = await apiFetch('/api/census-sessions/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const msg = `${data.deleted.length} data dihapus`
+        + (data.skipped.length ? `, ${data.skipped.length} dilewati (bukan milik Anda)` : '');
+      showToast(msg, data.skipped.length ? 'info' : 'success');
+      setTimeout(() => location.reload(), 900);
+    } catch (err) {
+      showToast(LANG.toast_server_error + err.message, 'error');
+      updateBulk();
+    }
+  });
 
   const estSel = document.getElementById('hist-estate-filter');
   const blkSel = document.getElementById('hist-block-filter');
