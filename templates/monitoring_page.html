@@ -407,6 +407,12 @@
                 <button class="btn-tbl-download" data-id="{{ s.id }}" title="{{ t('btn_download_excel') }}">
                   <i class="fa-solid fa-download"></i>
                 </button>
+                {% if s.gcs_prefix %}
+                <a class="btn-tbl-files" href="/api/census-session/{{ s.id }}/download"
+                   title="Download crop &amp; hasil deteksi (zip)">
+                  <i class="fa-solid fa-file-zipper"></i>
+                </a>
+                {% endif %}
                 <button class="btn-tbl-delete" data-id="{{ s.id }}" title="{{ t('btn_delete') }}">
                   <i class="fa-solid fa-trash"></i>
                 </button>

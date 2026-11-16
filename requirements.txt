@@ -43,5 +43,8 @@ google-api-python-client>=2.0.0
 google-auth-oauthlib>=1.0.0
 holidays>=0.40
 
+# ── Cloud storage for crops / detections (core/gcs_store.py, GCS_BUCKET) ─────
+google-cloud-storage>=2.10.0
+
 # ── Misc ──────────────────────────────────────────────────────────────────────
 setuptools>=65.5.1

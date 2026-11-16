@@ -1106,6 +1106,20 @@ a { text-decoration: none; color: inherit; }
   transition: var(--transition);
 }
 .btn-tbl-download:hover { color: #3fb950; border-color: #3fb95044; background: #3fb95010; }
+.btn-tbl-files {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text3);
+  font-size: 0.78rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.btn-tbl-files:hover { color: #58a6ff; border-color: #58a6ff44; background: #58a6ff10; }
 
 /* ── Multi-select dropdown ─────────────────────────────────────────────────── */
 .ms-wrap { position: relative; min-width: 160px; }

@@ -188,7 +188,7 @@ def _discover(root_folder):
     return sub_folders, frond_names
 
 
-def process_files(root_folder, base_dir=None, stop_event=None, proc_ref=None):
+def process_files(root_folder, base_dir=None, stop_event=None, proc_ref=None, saved_files=None):
     """
     Expected folder structure:
         root_folder/
@@ -201,7 +201,11 @@ def process_files(root_folder, base_dir=None, stop_event=None, proc_ref=None):
     Returns a DataFrame with columns [Baris-Pokok, F1, F2, ...].
     stop_event : threading.Event  – set to interrupt between stages.
     proc_ref   : list[None]       – kept for API compatibility (unused).
+    saved_files: list | None      – if given, receives (kind, path) for every file
+                                    written to LEC_census ('crops' or 'deteksi').
     """
+    if saved_files is None:
+        saved_files = []
     if base_dir is None:
         base_dir = _BASE_DIR
 
@@ -411,6 +415,7 @@ def process_files(root_folder, base_dir=None, stop_event=None, proc_ref=None):
                     except Exception: pass
                     else:
                         img_paths.setdefault(key, crop_dst)
+                        saved_files.append(("crops", crop_dst))
 
                     # save original image + LabelMe JSON once per source image
                     img_id = os.path.splitext(f)[0].split("_")[0]
@@ -428,6 +433,7 @@ def process_files(root_folder, base_dir=None, stop_event=None, proc_ref=None):
                     saved_img_path = _unique_path(out_seg, orig_name)
                     try: shutil.copy2(orig, saved_img_path)
                     except Exception: pass
+                    else: saved_files.append(("deteksi", saved_img_path))
 
                     saved_img_stem = os.path.splitext(os.path.basename(saved_img_path))[0]
 
@@ -458,8 +464,10 @@ def process_files(root_folder, base_dir=None, stop_event=None, proc_ref=None):
                         "source_frond":  key[1],
                     }
                     try:
-                        with open(os.path.join(out_seg, saved_img_stem + ".json"), "w") as jf:
+                        json_path = os.path.join(out_seg, saved_img_stem + ".json")
+                        with open(json_path, "w") as jf:
                             json.dump(labelme, jf, indent=2)
+                        saved_files.append(("deteksi", json_path))
                     except Exception:
                         pass
 

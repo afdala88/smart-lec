@@ -102,6 +102,11 @@ def init_db():
             con.execute("ALTER TABLE census_sessions ADD COLUMN gcal_event_id TEXT DEFAULT NULL")
         except Exception:
             pass
+        try:
+            # Bucket prefix holding this session's crops + detections (core/gcs_store.py)
+            con.execute("ALTER TABLE census_sessions ADD COLUMN gcs_prefix TEXT DEFAULT NULL")
+        except Exception:
+            pass
         con.execute('''
             CREATE TABLE IF NOT EXISTS census_jobs (
                 id          TEXT PRIMARY KEY,
@@ -525,6 +530,7 @@ def get_sessions(pest, user_id=None):
                COALESCE(not_confidence, 0) AS not_confidence,
                tanggal_pengendalian,
                avg_larvae,
+               gcs_prefix,
                user_id
         FROM   census_sessions
         WHERE  pest = ?
@@ -556,6 +562,12 @@ def get_session(session_id, user_id=None):
     d['gt_columns'] = json.loads(d.get('gt_columns') or '[]')
     d['gt_records'] = json.loads(d.get('gt_records') or '[]')
     return d
+
+
+def set_session_gcs_prefix(session_id, prefix):
+    with _conn() as con:
+        con.execute('UPDATE census_sessions SET gcs_prefix = ? WHERE id = ?', (prefix, session_id))
+        con.commit()
 
 
 def delete_session(session_id, user_id, is_admin=False):

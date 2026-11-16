@@ -25,6 +25,7 @@ from core import uploads, census_queue
 from core.pests import PESTS, BASE_DIR
 from core.estate import _get_tahun_tanam, calculate_decision
 from core import gcal_reminder
+from core import gcs_store
 from core.develop import (
     _load_develop_data, _run_training,
     _DET_DIR, _CLS_DIR, _SEG_DIR, _DET_CHARTS, _CLS_CHARTS,
@@ -493,6 +494,33 @@ def api_sessions_bulk_delete():
     return jsonify({'ok': True, 'deleted': deleted, 'skipped': skipped})
 
 
+@app.route('/api/census-session/<int:session_id>/download')
+@login_required
+def api_session_download(session_id):
+    """Zip of this session's crops + detection results stored in the GCS bucket."""
+    sess = db.get_session(session_id)
+    if not sess:
+        return jsonify({'error': 'Not found'}), 404
+    prefix = sess.get('gcs_prefix')
+    if not prefix or not gcs_store.enabled():
+        return jsonify({'error': 'Hasil sesi ini tidak tersimpan di cloud storage'}), 404
+    try:
+        zip_path, n = gcs_store.zip_session(prefix)
+    except Exception as exc:
+        print('[GCS DOWNLOAD ERROR]', exc)
+        return jsonify({'error': f'Gagal mengambil file dari storage: {exc}'}), 502
+    if n == 0:
+        os.remove(zip_path)
+        return jsonify({'error': 'Tidak ada file di storage untuk sesi ini'}), 404
+
+    name = gcs_store.session_prefix(session_id, sess.get('estate'), sess.get('block'),
+                                    sess.get('date_from') or sess.get('created_at'))
+    resp = send_file(zip_path, mimetype='application/zip', as_attachment=True,
+                     download_name=name.replace('/', '_') + '.zip')
+    resp.call_on_close(lambda: os.path.exists(zip_path) and os.remove(zip_path))
+    return resp
+
+
 # ── Develop APIs ────────────────────────────────────────────────────────────────
 @app.route('/api/develop/chart-image')
 @login_required
@@ -888,8 +916,10 @@ def _run_census_job(job, stop_event):
     Returns the new census_sessions id."""
     meta, job_id = job['meta'], job['id']
 
+    saved_files = []   # (kind, path) of crops / detections written for this run
     df, size_dist, size_points = census_processor.process_files(
-        meta['folder_path'], base_dir=BASE_DIR, stop_event=stop_event
+        meta['folder_path'], base_dir=BASE_DIR, stop_event=stop_event,
+        saved_files=saved_files,
     )
     if stop_event.is_set():
         raise census_queue.JobCancelled()
@@ -933,6 +963,19 @@ def _run_census_job(job, stop_event):
         gt_records            = meta['gt_records'],
         tanggal_pengendalian  = meta['tanggal_pengendalian'],
     )
+
+    # Copy crops + detections to the GCS bucket. A storage failure must not
+    # fail the census: the result is already saved and files stay on disk.
+    if gcs_store.enabled():
+        try:
+            prefix = gcs_store.upload_session(
+                new_session_id, meta['estate'], meta['block'],
+                meta['date_from'], saved_files,
+            )
+            if prefix:
+                db.set_session_gcs_prefix(new_session_id, prefix)
+        except Exception:
+            import traceback; print('[GCS UPLOAD ERROR]', traceback.format_exc())
 
     _broadcast_new_census_result(new_session_id)
 
