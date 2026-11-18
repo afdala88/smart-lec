@@ -525,11 +525,13 @@ def api_session_download(session_id):
 def _gps_csv_rows(sess):
     """[[B-P, M1, M2, M3, Latitude, Longitude], ...] for one session with Ground Truth."""
     gps = sess.get('gps_data')
-    if gps is None:
-        # Older session: read now if the photo folder still exists, and keep it.
-        gps = gps_coords.coords_for_folder(sess.get('folder_path'))
-        if gps:
-            db.set_session_gps(sess['id'], gps)
+    if gps is None or gps.get('_src') != gps_coords.SOURCE_TAG:
+        # Not read yet, or read with an older rule (e.g. F2): re-read if the
+        # photo folder still exists, otherwise keep what is stored.
+        fresh = gps_coords.coords_for_folder(sess.get('folder_path'))
+        if fresh:
+            db.set_session_gps(sess['id'], fresh)
+            gps = fresh
     gps = gps or {}
 
     def _m(v):
@@ -1044,7 +1046,7 @@ def _run_census_job(job, stop_event):
         tanggal_pengendalian  = meta['tanggal_pengendalian'],
     )
 
-    # Coordinates per Baris-Pokok from one F2 photo, read now while the photos
+    # Coordinates per Baris-Pokok from the 2nd F1 photo, read now while the photos
     # still exist (uploads are removed after UPLOAD_RETENTION_DAYS).
     try:
         db.set_session_gps(new_session_id, gps_coords.coords_for_folder(meta['folder_path']))

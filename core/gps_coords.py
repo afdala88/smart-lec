@@ -1,10 +1,14 @@
-"""Latitude / longitude per Baris-Pokok, read from the EXIF of one F2 photo.
+"""Latitude / longitude per Baris-Pokok, read from the EXIF of the second F1 photo.
+
+Note: for drone photos this is the drone's position when the photo was taken,
+not the exact tree position.
 
 Used for the GPS CSV download in Historical Census. Coordinates are read
 during the census run (while the photos still exist) and stored per session
 in census_sessions.gps_data as {"<Baris-Pokok>": [lat, lon], ...}.
 """
 import os
+import re
 
 _IMG_EXT = ('.jpg', '.jpeg', '.png', '.tif', '.tiff')
 
@@ -51,8 +55,19 @@ def _find_frond_dir(row_dir, frond='F2'):
     return None
 
 
-def coords_for_folder(root_folder, frond='F2'):
-    """{Baris-Pokok: [lat, lon]} using the first photo with GPS in each row's F2."""
+SOURCE_FROND = 'F1'
+SOURCE_INDEX = 1                     # 0-based: 1 = second photo
+SOURCE_TAG   = f'{SOURCE_FROND}#{SOURCE_INDEX + 1}'   # stored as "_src" in gps_data
+
+
+def _natural_key(name):
+    return [int(p) if p.isdigit() else p.lower() for p in re.split(r'(\d+)', name)]
+
+
+def coords_for_folder(root_folder, frond=SOURCE_FROND, index=SOURCE_INDEX):
+    """{Baris-Pokok: [lat, lon], "_src": "F1#2"} from the photo at `index`
+    (sorted by name) in each row's frond folder. If that photo has no GPS,
+    the next photos are tried, then the earlier ones."""
     out = {}
     if not root_folder or not os.path.isdir(root_folder):
         return out
@@ -60,11 +75,16 @@ def coords_for_folder(root_folder, frond='F2'):
         fdir = _find_frond_dir(os.path.join(root_folder, sf), frond)
         if not fdir:
             continue
-        for name in sorted(os.listdir(fdir)):
-            if not name.lower().endswith(_IMG_EXT):
-                continue
+        imgs = sorted((n for n in os.listdir(fdir) if n.lower().endswith(_IMG_EXT)),
+                      key=_natural_key)
+        if not imgs:
+            continue
+        start = min(index, len(imgs) - 1)
+        for name in imgs[start:] + imgs[:start][::-1]:
             ll = read_latlon(os.path.join(fdir, name))
             if ll:
                 out[sf] = list(ll)
                 break
+    if out:
+        out['_src'] = SOURCE_TAG
     return out
