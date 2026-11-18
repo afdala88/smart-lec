@@ -26,7 +26,6 @@ from core.pests import PESTS, BASE_DIR
 from core.estate import _get_tahun_tanam, calculate_decision
 from core import gcal_reminder
 from core import gcs_store
-from core import gps_coords
 from core.develop import (
     _load_develop_data, _run_training,
     _DET_DIR, _CLS_DIR, _SEG_DIR, _DET_CHARTS, _CLS_CHARTS,
@@ -522,87 +521,6 @@ def api_session_download(session_id):
     return resp
 
 
-def _gps_csv_rows(sess):
-    """[[B-P, M1, M2, M3, Latitude, Longitude], ...] for one session with Ground Truth."""
-    gps = sess.get('gps_data')
-    if gps is None or gps.get('_src') != gps_coords.SOURCE_TAG:
-        # Not read yet, or read with an older rule (e.g. F2): re-read if the
-        # photo folder still exists, otherwise keep what is stored.
-        fresh = gps_coords.coords_for_folder(sess.get('folder_path'))
-        if fresh:
-            db.set_session_gps(sess['id'], fresh)
-            gps = fresh
-    gps = gps or {}
-
-    def _m(v):
-        if v is None or v == '':
-            return ''
-        try:
-            f = float(v)
-            return int(f) if f.is_integer() else f
-        except (TypeError, ValueError):
-            return v
-
-    rows = []
-    for r in sess.get('gt_records') or []:
-        bp = str(r.get('Baris-Pokok', '') or '').strip()
-        if not bp:
-            continue
-        lat, lon = (gps.get(bp) or ['', ''])[:2]
-        rows.append([bp, _m(r.get('M1')), _m(r.get('M2')), _m(r.get('M3')), lat, lon])
-    return rows
-
-
-def _csv_response(header, rows, filename):
-    import csv
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(header)
-    w.writerows(rows)
-    resp = make_response('﻿' + buf.getvalue())   # BOM so Excel reads UTF-8
-    resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
-    resp.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return resp
-
-
-@app.route('/api/census-session/<int:session_id>/gps-csv')
-@login_required
-def api_session_gps_csv(session_id):
-    """CSV: B-P, M1, M2, M3 (Ground Truth), Latitude, Longitude (one F2 photo)."""
-    sess = db.get_session(session_id)
-    if not sess:
-        return jsonify({'error': 'Not found'}), 404
-    if not sess.get('gt_records'):
-        return jsonify({'error': 'Sesi ini tidak memiliki Ground Truth'}), 404
-    name = gcs_store.session_prefix(session_id, sess.get('estate'), sess.get('block'),
-                                    sess.get('date_from') or sess.get('created_at'))
-    return _csv_response(['B-P', 'M1', 'M2', 'M3', 'Latitude', 'Longitude'],
-                         _gps_csv_rows(sess), name.replace('/', '_') + '_gps.csv')
-
-
-@app.route('/api/census-sessions/gps-csv')
-@login_required
-def api_sessions_gps_csv():
-    """One CSV for several sessions: ?ids=1,2,3. Sessions without Ground Truth are skipped."""
-    try:
-        ids = [int(i) for i in (request.args.get('ids') or '').split(',') if i.strip()]
-    except ValueError:
-        return jsonify({'error': 'ids tidak valid'}), 400
-    rows = []
-    for sid in ids:
-        sess = db.get_session(sid)
-        if not sess or not sess.get('gt_records'):
-            continue
-        tgl = (sess.get('date_from') or sess.get('created_at') or '')[:10]
-        for r in _gps_csv_rows(sess):
-            rows.append([sess.get('estate') or '', sess.get('block') or '', tgl] + r)
-    if not rows:
-        return jsonify({'error': 'Tidak ada sesi terpilih yang memiliki Ground Truth'}), 404
-    return _csv_response(
-        ['Estate', 'Block', 'Tanggal Sensus', 'B-P', 'M1', 'M2', 'M3', 'Latitude', 'Longitude'],
-        rows, f'gps_ground_truth_{len(ids)}_sesi.csv')
-
-
 # ── Develop APIs ────────────────────────────────────────────────────────────────
 @app.route('/api/develop/chart-image')
 @login_required
@@ -1045,13 +963,6 @@ def _run_census_job(job, stop_event):
         gt_records            = meta['gt_records'],
         tanggal_pengendalian  = meta['tanggal_pengendalian'],
     )
-
-    # Coordinates per Baris-Pokok from the 2nd F1 photo, read now while the photos
-    # still exist (uploads are removed after UPLOAD_RETENTION_DAYS).
-    try:
-        db.set_session_gps(new_session_id, gps_coords.coords_for_folder(meta['folder_path']))
-    except Exception:
-        import traceback; print('[GPS ERROR]', traceback.format_exc())
 
     # Copy crops + detections to the GCS bucket. A storage failure must not
     # fail the census: the result is already saved and files stay on disk.

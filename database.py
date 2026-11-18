@@ -107,11 +107,6 @@ def init_db():
             con.execute("ALTER TABLE census_sessions ADD COLUMN gcs_prefix TEXT DEFAULT NULL")
         except Exception:
             pass
-        try:
-            # {"<Baris-Pokok>": [lat, lon]} from one F2 photo (core/gps_coords.py)
-            con.execute("ALTER TABLE census_sessions ADD COLUMN gps_data TEXT DEFAULT NULL")
-        except Exception:
-            pass
         con.execute('''
             CREATE TABLE IF NOT EXISTS census_jobs (
                 id          TEXT PRIMARY KEY,
@@ -566,15 +561,7 @@ def get_session(session_id, user_id=None):
     d['records']    = json.loads(d['records']    or '[]')
     d['gt_columns'] = json.loads(d.get('gt_columns') or '[]')
     d['gt_records'] = json.loads(d.get('gt_records') or '[]')
-    d['gps_data']   = json.loads(d['gps_data']) if d.get('gps_data') else None
     return d
-
-
-def set_session_gps(session_id, gps):
-    with _conn() as con:
-        con.execute('UPDATE census_sessions SET gps_data = ? WHERE id = ?',
-                    (json.dumps(gps or {}), session_id))
-        con.commit()
 
 
 def set_session_gcs_prefix(session_id, prefix):
