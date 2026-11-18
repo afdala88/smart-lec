@@ -328,8 +328,13 @@
         </select>
       </div>
       {% if sessions %}
+      <button id="btn-bulk-csv" class="btn-action btn-secondary" disabled
+              title="CSV: Estate, Block, Tanggal, B-P, M1-M3 (Ground Truth), Latitude, Longitude"
+              style="margin-left:auto; align-self:flex-end; padding:6px 14px; font-size:.8rem; color:#58a6ff; border-color:#58a6ff66;">
+        <i class="fa-solid fa-file-csv"></i> Download CSV terpilih (<span id="bulk-csv-count">0</span>)
+      </button>
       <button id="btn-bulk-delete" class="btn-action btn-secondary" disabled
-              style="margin-left:auto; align-self:flex-end; padding:6px 14px; font-size:.8rem; color:#f85149; border-color:#f8514966;">
+              style="align-self:flex-end; padding:6px 14px; font-size:.8rem; color:#f85149; border-color:#f8514966;">
         <i class="fa-solid fa-trash"></i> Hapus terpilih (<span id="bulk-count">0</span>)
       </button>
       {% endif %}
@@ -407,6 +412,12 @@
                 <button class="btn-tbl-download" data-id="{{ s.id }}" title="{{ t('btn_download_excel') }}">
                   <i class="fa-solid fa-download"></i>
                 </button>
+                {% if s.has_gt %}
+                <a class="btn-tbl-files" href="/api/census-session/{{ s.id }}/gps-csv"
+                   title="Download CSV: B-P, M1-M3 (Ground Truth), Latitude, Longitude">
+                  <i class="fa-solid fa-location-dot"></i>
+                </a>
+                {% endif %}
                 {% if s.gcs_prefix %}
                 <a class="btn-tbl-files" href="/api/census-session/{{ s.id }}/download"
                    title="Download crop &amp; hasil deteksi (zip)">
@@ -1908,6 +1919,8 @@ document.querySelectorAll('.btn-tbl-delete').forEach(btn => {
   const checkAll = document.getElementById('hist-check-all');
   const bulkBtn  = document.getElementById('btn-bulk-delete');
   const bulkCnt  = document.getElementById('bulk-count');
+  const csvBtn   = document.getElementById('btn-bulk-csv');
+  const csvCnt   = document.getElementById('bulk-csv-count');
   const visibleChecks = () => [...document.querySelectorAll('#history-table tbody tr')]
     .filter(tr => tr.style.display !== 'none')
     .map(tr => tr.querySelector('.hist-check')).filter(Boolean);
@@ -1918,6 +1931,10 @@ document.querySelectorAll('.btn-tbl-delete').forEach(btn => {
     const n   = vis.filter(cb => cb.checked).length;
     bulkCnt.textContent = n;
     bulkBtn.disabled    = n === 0;
+    if (csvBtn) {
+      csvCnt.textContent = n;
+      csvBtn.disabled    = n === 0;
+    }
     if (checkAll) {
       checkAll.checked       = vis.length > 0 && n === vis.length;
       checkAll.indeterminate = n > 0 && n < vis.length;
@@ -1929,6 +1946,31 @@ document.querySelectorAll('.btn-tbl-delete').forEach(btn => {
     updateBulk();
   });
   document.querySelectorAll('.hist-check').forEach(cb => cb.addEventListener('change', updateBulk));
+
+  if (csvBtn) csvBtn.addEventListener('click', async () => {
+    const ids = visibleChecks().filter(cb => cb.checked).map(cb => cb.value);
+    if (!ids.length) return;
+    csvBtn.disabled = true;
+    try {
+      const res = await fetch('/api/census-sessions/gps-csv?ids=' + ids.join(','));
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || res.status);
+      }
+      const blob = await res.blob();
+      const cd   = res.headers.get('Content-Disposition') || '';
+      const m    = cd.match(/filename="([^"]+)"/);
+      const a    = document.createElement('a');
+      a.href     = URL.createObjectURL(blob);
+      a.download = m ? m[1] : 'gps_ground_truth.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      updateBulk();
+    }
+  });
 
   if (bulkBtn) bulkBtn.addEventListener('click', async () => {
     const ids = visibleChecks().filter(cb => cb.checked).map(cb => Number(cb.value));
