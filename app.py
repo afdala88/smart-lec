@@ -230,7 +230,8 @@ def admin_logout():
 @admin_required
 def admin_dashboard():
     users = db.get_all_users()
-    return render_template('admin_dashboard.html', users=users)
+    return render_template('admin_dashboard.html', users=users,
+                           msg=request.args.get('msg', ''), msg_err=bool(request.args.get('err')))
 
 
 @app.route('/admin/user/<int:user_id>/approve', methods=['POST'])
@@ -245,6 +246,17 @@ def admin_approve(user_id):
 def admin_reject(user_id):
     db.update_user_status(user_id, 'rejected')
     return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/user/<int:user_id>/password', methods=['POST'])
+@admin_required
+def admin_reset_password(user_id):
+    password = request.form.get('password', '')
+    if len(password) < 6:
+        return redirect(url_for('admin_dashboard', msg='Password minimal 6 karakter.', err=1))
+    if not db.set_user_password(user_id, password):
+        return redirect(url_for('admin_dashboard', msg='Pengguna tidak ditemukan.', err=1))
+    return redirect(url_for('admin_dashboard', msg='Password berhasil diganti.'))
 
 
 @app.route('/admin/user/<int:user_id>/delete', methods=['POST'])

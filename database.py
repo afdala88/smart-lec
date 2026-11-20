@@ -437,6 +437,15 @@ def user_has_module(user_id, module_key):
     return '*' in mods or module_key in mods
 
 
+def set_user_password(user_id, password):
+    """Admin reset: store a new password for the user. Returns True if the user exists."""
+    with _conn() as con:
+        cur = con.execute('UPDATE users SET password = ? WHERE id = ?',
+                          (_hash_password(password), user_id))
+        con.commit()
+        return cur.rowcount > 0
+
+
 def delete_user(user_id):
     with _conn() as con:
         con.execute('DELETE FROM users WHERE id = ?', (user_id,))

@@ -111,6 +111,10 @@
     .btn-approve { background: rgba(63,185,80,0.15);  color: var(--green); }
     .btn-reject  { background: rgba(248,81,73,0.15);  color: #f85149; }
     .btn-delete  { background: rgba(139,148,158,0.15); color: var(--text2); }
+    .btn-password { background: rgba(88,166,255,0.15); color: #58a6ff; }
+    .admin-msg { padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.875rem;
+                 background: rgba(63,185,80,0.12); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+    .admin-msg.err { background: rgba(248,81,73,0.12); color: #f85149; border-color: rgba(248,81,73,0.3); }
     .empty-state { text-align: center; padding: 2rem; color: var(--text2); font-size: 0.9rem; }
     .filter-row { display: flex; gap: 0.5rem; padding: 0.8rem 1rem; border-bottom: 1px solid var(--border2); }
     .filter-btn {
@@ -140,6 +144,12 @@
       <i class="fa-solid fa-right-from-bracket"></i> Logout
     </a>
   </div>
+
+  {% if msg %}
+  <div class="admin-msg{% if msg_err %} err{% endif %}">
+    <i class="fa-solid {% if msg_err %}fa-circle-exclamation{% else %}fa-circle-check{% endif %}"></i> {{ msg }}
+  </div>
+  {% endif %}
 
   <!-- Stats -->
   {% set pending_count  = users | selectattr('status', 'eq', 'pending')  | list | length %}
@@ -204,6 +214,11 @@
                 <button class="btn-sm btn-reject" title="Tolak"><i class="fa-solid fa-xmark"></i> Tolak</button>
               </form>
               {% endif %}
+              <form method="POST" action="{{ url_for('admin_reset_password', user_id=u.id) }}" style="display:inline"
+                    onsubmit="return askPassword(this, {{ u.nama | tojson | forceescape }})">
+                <input type="hidden" name="password">
+                <button class="btn-sm btn-password" title="Ganti password"><i class="fa-solid fa-key"></i></button>
+              </form>
               <form method="POST" action="{{ url_for('admin_delete_user', user_id=u.id) }}" style="display:inline"
                     onsubmit="return confirm('Hapus pengguna {{ u.nama }}?')">
                 <button class="btn-sm btn-delete" title="Hapus"><i class="fa-solid fa-trash"></i></button>
@@ -222,6 +237,21 @@
     {% endif %}
   </div>
 </div>
+
+<script>
+function askPassword(form, nama) {
+  const pw = prompt('Password baru untuk ' + nama + ' (minimal 6 karakter):');
+  if (pw === null) return false;
+  if (pw.length < 6) { alert('Password minimal 6 karakter.'); return false; }
+  const pw2 = prompt('Ketik ulang password baru untuk konfirmasi:');
+  if (pw2 === null) return false;
+  if (pw !== pw2) { alert('Konfirmasi password tidak cocok.'); return false; }
+  form.password.value = pw;
+  return true;
+}
+// Drop ?msg=... from the address bar so a reload does not show it again
+if (location.search) history.replaceState(null, '', location.pathname);
+</script>
 
 </body>
 </html>
